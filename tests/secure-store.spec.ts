@@ -91,6 +91,33 @@ describe('OS-protected encrypted storage', () => {
       await expect(store.migrateLegacyStorage({ confirmStopped: true })).rejects.toMatchObject({ code: 'ELOOP' })
     }
   })
+  it('retries a partially encrypted migration with the original key and untouched primary', async () => {
+    const path = await filename()
+    const keys = memoryKeyStore()
+    const read = keys.read
+    let reads = 0
+    const write = vi.fn(keys.write)
+    keys.write = write
+    keys.read = async () => {
+      if (++reads === 3) throw new Error('Synthetic interrupted backup verification')
+      return read()
+    }
+    const store = new OpenAICodexCredentialStore(path, keys)
+    const primary = JSON.stringify({ version: 2, activeAccountId: credential.accountId, credentials: [credential] })
+    await writeFile(path, primary, { mode: 0o600 })
+    await writeFile(store.version1BackupFilename, JSON.stringify({ version: 1, credential }), { mode: 0o600 })
+    await expect(store.migrateLegacyStorage({ confirmStopped: true })).rejects.toThrow('Synthetic interrupted')
+    expect(await readFile(path, 'utf8')).toBe(primary)
+    expect(JSON.parse(await readFile(store.version1BackupFilename, 'utf8'))).toMatchObject({ version: 3 })
+    const originalKey = await read()
+    await store.migrateLegacyStorage({ confirmStopped: true })
+    expect(await read()).toEqual(originalKey)
+    expect(write).toHaveBeenCalledOnce()
+    expect(await store.read(OPENAI_CODEX_PROVIDER)).toEqual(credential)
+    for (const file of [path, store.version1BackupFilename]) {
+      expect(await readFile(file, 'utf8')).not.toContain(credential.access)
+    }
+  })
   it('deletes the OS key when the final account is removed', async () => {
     const path = await filename(); const keys = memoryKeyStore(); const store = new OpenAICodexCredentialStore(path, keys)
     await store.modify(OPENAI_CODEX_PROVIDER, async () => credential)

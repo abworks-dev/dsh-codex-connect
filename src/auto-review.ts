@@ -111,6 +111,14 @@ export class OpenAICodexAutoReviewAnswerer {
     try { assessment = parseAutoReviewAssessment(JSON.stringify(result.assessment)) } catch { return next() }
     if (assessment === undefined) return next()
     const denied = assessment.outcome === 'deny'
+    // The remote review can take seconds; its earlier target check can go stale.
+    // Recheck immediately before returning an automatic allow. The Host still
+    // owns execution-time permissions and the final filesystem boundary.
+    if (!denied) {
+      try { policy = await this.resolvePolicy(action) } catch { return requestCancelled(request) ? 'cancelled' : next() }
+      if (requestCancelled(request)) return 'cancelled'
+      if ('humanReason' in policy) return next()
+    }
     if (!denied && (assessment.risk_level === 'high' || assessment.risk_level === 'critical'
       || assessment.user_authorization === 'unknown'
       || (assessment.risk_level === 'medium' || policy.riskFloor === 'medium') && assessment.user_authorization === 'low')) {

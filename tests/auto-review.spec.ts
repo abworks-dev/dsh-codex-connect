@@ -69,6 +69,25 @@ const deny: AutoReviewBackendResult = {
 }
 
 describe('Auto-review approval answerer', () => {
+  it.skipIf(process.platform === 'win32')('returns to host approval if the target changes to a sensitive path during review', async () => {
+    const workspace = await mkdtemp(join(tmpdir(), 'review-target-change-'))
+    try {
+      await writeFile(join(workspace, 'README.md'), 'Synthetic documentation')
+      await writeFile(join(workspace, '.env'), 'SYNTHETIC=fixture')
+      const target = fixture({ cwd: workspace })
+      const review = { review: vi.fn(async () => {
+        await unlink(join(workspace, 'README.md'))
+        await symlink(join(workspace, '.env'), join(workspace, 'README.md'))
+        return allow
+      }) }
+      const next = vi.fn(async () => 'rejected' as const)
+      const answerer = new OpenAICodexAutoReviewAnswerer(review)
+      await expect(answerer.answer(target.request('call-1', 1), next)).resolves.toBe('rejected')
+      expect(next).toHaveBeenCalledOnce()
+      expect(review.review).toHaveBeenCalledOnce()
+    } finally { await rm(workspace, { recursive: true, force: true }) }
+  })
+
   it('allows only a completed allow and delegates unavailable review', async () => {
     const first = fixture()
     const answerer = createAnswerer(backend(allow))
