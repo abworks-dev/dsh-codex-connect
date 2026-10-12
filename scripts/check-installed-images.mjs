@@ -40,6 +40,10 @@ export async function checkInstalledImages(importHost, CodexConnect, toolsManife
   globalThis.fetch = async () => { networkAttempts++; throw new Error('Unexpected image fixture network request') }
   const routes = new Map()
   try {
+    ctx.provide('workingDirectory', { async ensure(_agent, signal) {
+      signal?.throwIfAborted()
+      return directory
+    } })
     ctx.provide('webServer', { register(route) { routes.set(route.path, route); return () => routes.delete(route.path) } })
     ctx.provide('attachments', {
       imageLimits: { maxImageBytes: 1_000_000, maxImagesPerMessage: 4, maxMessageImageBytes: 4_000_000, maxImagePixels: 1_000_000, maxImageDimension: 2048, mediaTypes: ['image/png'] },
@@ -67,7 +71,8 @@ export async function checkInstalledImages(importHost, CodexConnect, toolsManife
       },
     })
     for (const plugin of [Llm, Sessions, Projections, Prompt]) await ctx.plugin(plugin)
-    await ctx.plugin(Tools, { mode: 'both' })
+    // alpha.2 retired mixed mode; verify native and PTC paths separately.
+    await ctx.plugin(Tools, { mode: 'native' })
     await ctx.plugin(Agents)
     await ctx.plugin(Loop, { agents: [] })
     await ctx.plugin(CodexConnect, { enableImageGeneration: true })
@@ -84,12 +89,13 @@ export async function checkInstalledImages(importHost, CodexConnect, toolsManife
       assert.ok(input.prompt.includes('Image 1 is the target to edit.'))
       return { apiVersion: 1, traceId: 'edit-fixture', elapsedMs: 1, responseBytes: PNG.length, images: [{ b64Json: PNG.toString('base64') }] }
     }
-    const agent = await ctx.agentLoop.create(SessionId('image-fixture'), { provider: 'openai-codex', model: 'gpt-6-astra' })
+    const agent = await ctx.agentLoop.create(SessionId('image-fixture'), { provider: 'openai-codex', model: 'gpt-6-astra' }, { cwd: directory })
     const execute = (name, args, callId) => ctx.tools.execute({ agent, name, arguments: args, callId, signal: new AbortController().signal })
     const direct = await execute('codex_connect_image_generate', { prompt: 'fixture' }, 'direct-image')
     assert.equal(direct.isError, false, JSON.stringify(direct))
     assert.equal(direct.meta.kind, 'codex-connect-images')
     const earlierFork = await ctx.sessions.fork(agent.session, undefined, SessionId('image-earlier-fork'))
+    const restoreNative = agent.ctx.tools.presentAs('ptc')
     const result = await execute('run_code', { code: 'return await tools.codex_connect_image_generate({prompt: "fixture"});', description: 'Synthetic image inspection' }, 'ptc-image')
     assert.equal(result.isError, false, JSON.stringify(result))
     const dispatch = agent.session.snapshotEvents().filter(event => event.type === 'tool/code-dispatch' || event.type === 'tool/ptc-dispatch')
@@ -138,6 +144,7 @@ export async function checkInstalledImages(importHost, CodexConnect, toolsManife
     assert.equal(inheritedEdit.status, 200)
     assert.deepEqual(inheritedEdit.body, PNG)
     assert.equal((await download(fork.id, editedOriginal.assetId)).status, 404)
+    restoreNative()
     const next = await execute('codex_connect_image_generate', {
       operation: 'edit', prompt: 'continue fixture edit', target: { assetId: editedOriginal.assetId },
     }, 'continued-edit')
