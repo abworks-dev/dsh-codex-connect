@@ -19,7 +19,10 @@ export function assertAdaptiveTaskUiReport(report, root) {
   assert.ok(Array.isArray(report.testResults), 'Missing file results')
   assert.equal(report.testResults.length, 1, 'Expected only the authenticated Task HTTP suite')
   const file = report.testResults[0]
-  assert.equal(file.name, resolve(root, 'tests/adaptive-task-http.spec.ts'), 'Unexpected test file')
+  // Vitest emits slash(path.resolve(...)), preserving drive case and absolute identity.
+  const slash = path => path.replace(/\\/g, '/')
+  assert.equal(typeof file.name, 'string', 'Unexpected test file')
+  assert.equal(slash(file.name), slash(resolve(root, 'tests/adaptive-task-http.spec.ts')), 'Unexpected test file')
   assert.equal(file.status, 'passed', 'Test file did not pass')
   assert.equal(file.message, '', 'Test file reported an error')
   assert.ok(Array.isArray(file.assertionResults), 'Missing assertion results')

@@ -1,5 +1,11 @@
-import { expect, it } from 'vitest'
-import { resolve } from 'node:path'
+import { expect, it, vi } from 'vitest'
+import { resolve, win32 } from 'node:path'
+
+// Exercise native Windows resolution on any test host without changing the helper API.
+vi.mock('node:path', async importOriginal => {
+  const actual = await importOriginal<typeof import('node:path')>()
+  return { ...actual, resolve: vi.fn(actual.resolve) }
+})
 // @ts-expect-error Plain Node report helper is outside the source build.
 import { assertAdaptiveTaskUiReport, requiredAdaptiveTaskUiCases as untypedRequiredCases } from '../scripts/adaptive-task-ui-report.mjs'
 const requiredAdaptiveTaskUiCases = untypedRequiredCases as readonly string[]
@@ -14,7 +20,7 @@ function fixture(titles = [...requiredAdaptiveTaskUiCases]) {
     numTotalTests: titles.length, numPassedTests: titles.length,
     numFailedTests: 0, numPendingTests: 0, numTodoTests: 0,
     testResults: [{
-      name: resolve(root, suite), status: 'passed', message: '',
+      name: resolve(root, suite).replace(/\\/g, '/'), status: 'passed', message: '',
       assertionResults: titles.map(title => ({
         ancestorTitles: [] as string[], fullName: title, title,
         status: 'passed', duration: 1, failureMessages: [] as string[], meta: {}, tags: [],
@@ -25,6 +31,32 @@ function fixture(titles = [...requiredAdaptiveTaskUiCases]) {
 
 it('accepts the required authenticated HTTP and real browser evidence', () => {
   expect(() => assertAdaptiveTaskUiReport(fixture(), root)).not.toThrow()
+})
+it.each([
+  String.raw`C:\work\repo\tests\adaptive-task-http.spec.ts`,
+  'C:/work/repo/tests/adaptive-task-http.spec.ts',
+])('accepts Windows report separators against native resolution: %s', name => {
+  const report = fixture()
+  report.testResults[0]!.name = name
+  const windowsRoot = String.raw`C:\work\repo`
+  vi.mocked(resolve).mockReturnValueOnce(win32.resolve(windowsRoot, suite))
+  expect(() => assertAdaptiveTaskUiReport(report, windowsRoot)).not.toThrow()
+  expect(resolve).toHaveBeenLastCalledWith(windowsRoot, suite)
+})
+it.each([
+  'C:/work/repo/tests/unrelated.spec.ts',
+  'tests/adaptive-task-http.spec.ts',
+  String.raw`tests\adaptive-task-http.spec.ts`,
+  'C:/work/other/tests/adaptive-task-http.spec.ts',
+  'D:/work/repo/tests/adaptive-task-http.spec.ts',
+  'c:/work/repo/tests/adaptive-task-http.spec.ts',
+  'C:/work/repo/tests/../tests/adaptive-task-http.spec.ts',
+])('rejects a nonidentical Windows report path: %s', name => {
+  const report = fixture()
+  report.testResults[0]!.name = name
+  const windowsRoot = String.raw`C:\work\repo`
+  vi.mocked(resolve).mockReturnValueOnce(win32.resolve(windowsRoot, suite))
+  expect(() => assertAdaptiveTaskUiReport(report, windowsRoot)).toThrow(/Unexpected test file/)
 })
 it('accepts genuinely extra passing tests rather than enforcing a fixed total', () => {
   expect(() => assertAdaptiveTaskUiReport(fixture([...requiredAdaptiveTaskUiCases, 'additional safety case']), root)).not.toThrow()
