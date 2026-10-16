@@ -6,7 +6,7 @@ import { OpenAICodexRuntimeIdentity } from '../../src/client/OpenAICodexRuntimeI
 import { en, zh } from '../../src/client/locales.ts'
 import { OPENAI_CODEX_RUNTIME_PATH } from '../../src/update-paths.ts'
 import { CODEX_CONNECT_VERSION } from '../../src/version.ts'
-import { runtimeReport } from '../runtime-identity-fixtures.ts'
+import { inconsistentRuntimeReports, runtimeReport } from '../runtime-identity-fixtures.ts'
 
 let host: HTMLDivElement
 let root: Root | undefined
@@ -72,6 +72,22 @@ describe('runtime identity in Chromium', () => {
     const receipt = JSON.parse(region.element().querySelector('pre')!.textContent!)
     expect(receipt.observation).toBe('host-not-observed')
     expect(receipt).not.toHaveProperty('host')
+  })
+
+  it.each(inconsistentRuntimeReports().slice(0, 2))('clears a previous match after $name is returned', async ({ report }) => {
+    let response = runtimeReport(CODEX_CONNECT_VERSION)
+    vi.stubGlobal('fetch', vi.fn(async () => json(response)))
+    root!.render(createElement(OpenAICodexRuntimeIdentity, { t: translate(en) }))
+    const region = page.getByRole('region', { name: en.runtimeHeading })
+    await vi.waitFor(() => expect(region.element().textContent).toContain(en.runtimeVersionsMatch))
+    response = report
+    await page.getByRole('button', { name: en.runtimeRecheck }).click()
+    await vi.waitFor(() => expect(region.element().textContent).toContain(en.runtimeUnavailable))
+    expect(region.element().querySelector('[data-runtime-version-state]')?.getAttribute('data-runtime-version-state')).toBe('unknown')
+    const receipt = JSON.parse(region.element().querySelector('pre')!.textContent!)
+    expect(receipt.observation).toBe('host-not-observed')
+    expect(receipt).not.toHaveProperty('host')
+    expect(receipt.client.loadedPluginVersion).toBe(CODEX_CONNECT_VERSION)
   })
 
   it('shows a stale page separately from a changed installation, without auto refresh/restart', async () => {

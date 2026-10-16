@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { comparePluginVersions, readRuntimeIdentity, runtimeIdentityReceipt } from '../src/client/runtime-identity-client.ts'
 import { OPENAI_CODEX_RUNTIME_PATH } from '../src/update-paths.ts'
-import { runtimeReport } from './runtime-identity-fixtures.ts'
+import { inconsistentRuntimeReports, runtimeReport } from './runtime-identity-fixtures.ts'
 
 const clientVersion = '0.2.0-alpha.4'
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status })
@@ -46,6 +46,14 @@ describe('fresh runtime identity evidence', () => {
     expect(snapshot.status).toBe('unavailable')
     expect(snapshot.pluginVersionState).toBe('unknown')
     expect(snapshot.report).toBeUndefined()
+  })
+
+  it.each(inconsistentRuntimeReports())('keeps $name unavailable/unknown and out of the support receipt', async ({ report }) => {
+    vi.stubGlobal('fetch', vi.fn(async () => json(report)))
+    const snapshot = await readRuntimeIdentity(clientVersion, new AbortController().signal)
+    expect(snapshot).toEqual({ status: 'unavailable', clientVersion, pluginVersionState: 'unknown' })
+    expect(runtimeIdentityReceipt(snapshot)).toMatchObject({ observation: 'host-not-observed' })
+    expect(runtimeIdentityReceipt(snapshot)).not.toHaveProperty('host')
   })
 
   it('keeps the browser version immutable when the Host reports another current version', async () => {

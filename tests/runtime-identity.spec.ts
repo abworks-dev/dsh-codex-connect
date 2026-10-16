@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { evaluateCompatibility } from '../src/compatibility.ts'
+import { evaluateCompatibility, SUPPORTED_DSH_PLUGIN_API_VERSIONS } from '../src/compatibility-policy.ts'
+import { inconsistentRuntimeReports } from './runtime-identity-fixtures.ts'
 import {
   isRuntimeMetadataVersion,
   parseOpenAICodexRuntimeReport,
@@ -80,6 +81,39 @@ describe('node-free runtime receipt decoder', () => {
   ])('rejects invalid or incoherent metadata without trusting a compatible label', mutate => {
     const report = receipt()
     mutate(report)
+    expect(parseOpenAICodexRuntimeReport(report)).toBeUndefined()
+  })
+
+  it.each(inconsistentRuntimeReports())('rejects $name instead of aggregating incoming labels', ({ report }) => {
+    expect(parseOpenAICodexRuntimeReport(report)).toBeUndefined()
+  })
+
+  it.each(SUPPORTED_DSH_PLUGIN_API_VERSIONS)('preserves the exact coherent %s policy', version => {
+    const report = receipt()
+    report.currentDshVersion = version
+    for (const name of ['@deepseek-ai/dsh-llm', '@deepseek-ai/dsh-llm-pi-ai', '@deepseek-ai/dsh-compaction'] as const) {
+      report.compatibility.packages[name].installed = version
+    }
+    expect(parseOpenAICodexRuntimeReport(report)).toEqual(report)
+  })
+
+  it('preserves truthful incompatible/unverified reports and Node precedence', () => {
+    for (const { report } of inconsistentRuntimeReports().slice(0, 4)) {
+      report.compatibility = evaluateCompatibility({
+        nodeVersion: report.compatibility.node.installed,
+        packageVersions: Object.fromEntries(Object.entries(report.compatibility.packages).map(([name, item]) => [name, item.installed])),
+      })
+      expect(report.compatibility.status).not.toBe('compatible')
+      expect(parseOpenAICodexRuntimeReport(report)).toEqual(report)
+    }
+  })
+
+  it('preserves an anchored root mismatch only as unverified when peers themselves are coherent', () => {
+    const report = receipt()
+    delete report.currentDshVersion
+    report.compatibility.status = 'unverified'
+    expect(parseOpenAICodexRuntimeReport(report)).toEqual(report)
+    report.compatibility.status = 'compatible'
     expect(parseOpenAICodexRuntimeReport(report)).toBeUndefined()
   })
 

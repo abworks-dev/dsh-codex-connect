@@ -17,6 +17,8 @@ Matching **plugin version declarations** does not prove identical archive bytes,
 
 **View diagnostic receipt** shows a local, allowlisted JSON projection. It contains versions/statuses and a browser observation timestamp, not account identifiers, credentials, file paths, raw errors, prompt/tool content or conversation state. It is not uploaded automatically. It does not inherit the registry update card's 24-hour cache or use an `up-to-date` registry result as runtime proof.
 
+The decoder recomputes compatibility from decoded versions using the same Node-free policy as the Host; it rejects contradictory status labels or changed support ranges. Mixed peers stay unverified even without `currentDshVersion`. A compatible peer tuple without root-coherence evidence cannot claim selected-installation compatibility. Truthful incompatible/unverified reports remain readable; malformed evidence instead clears the observation to unknown.
+
 ## Direct standalone doctor
 
 For package-manager-free diagnostics, execute the **already installed** bin directly with a suitable existing Node runtime. These are placeholders for paths you have independently identified, not commands to discover/download an executable:
@@ -26,7 +28,7 @@ node /absolute/profile/node_modules/dsh-codex-connect/lib/bin.js doctor --json \
   --install-anchor /absolute/dsh/node_modules/@deepseek-ai/dsh/package.json
 ```
 
-Set `DSH_HOME` deliberately for the intended installation before invoking diagnostics. Do not copy or inspect an OAuth document to locate it. Packaged Desktop can keep DSH metadata inside ASAR, which ordinary Node filesystem APIs cannot read; prefer the running-page receipt, or the application's existing ASAR-capable runtime after identifying its installation. Do not replace Desktop's bundled runtime or infer it from an unrelated CLI on PATH.
+Set `DSH_HOME` deliberately for the intended installation before invoking diagnostics. Do not copy or inspect an OAuth document to locate it. **ASAR-member metadata deliberately remains unknown**, including in an ASAR-capable Electron runtime: a generic file descriptor cannot prove a virtual member's identity, and opening it can implicitly extract a file. The reader rejects ASAR path components before opening members; it does not extract, use an unbounded fallback or substitute another installation. The running-page receipt can still observe the Host-loaded plugin declaration while selected DSH metadata stays unknown. Do not replace Desktop's bundled runtime, install a separate Host, or select an unrelated CLI merely to obtain a green diagnostic.
 
 The direct `doctor` entry reads public package metadata and uses `lstat` for credential-file metadata only. It never opens the OAuth document, fetches a provider, invokes a package manager, writes a profile, or starts a Host. `dsh plugin exec`, `pnpm exec` and `npx` are wrappers with their own dependency reconciliation/install behavior; they are **not** a guarantee of a read-only invocation. Do not use such a wrapper merely to collect a no-write receipt.
 
@@ -44,6 +46,8 @@ Compatibility remains strict: `compatible` means the declared version tuple matc
 
 回执由用户主动查看，不自动上传；只包含允许输出的版本、状态和浏览器观察时间，不包含凭据、账户标识、路径、原始错误、提示词、工具参数或会话内容。发布版本检查的“已最新”及其缓存，不是实际运行身份的证明。
 
-严格只读的 CLI 诊断应直接执行已经安装的 bin，明确正确 `DSH_HOME` 与 DSH 安装锚点；上面的路径只是占位。Desktop 的 ASAR 元数据需要其已有的 ASAR 读取能力，普通 Node 不一定可读，优先使用运行页面。`dsh plugin exec`、`pnpm exec`、`npx` 自身可能核对或安装依赖，不能作为“无写入”的保证，也不能为了诊断去替换 Desktop 运行时。
+解码器与 Host 共用不依赖 Node 的纯规则，从版本重新计算兼容性，拒绝矛盾状态标签或被更换的支持范围。即使省略 `currentDshVersion`，混版 peer 仍不能宣称兼容；缺少主清单一致性证据时，兼容的 peer 组合也不能证明所选安装兼容。真实的 incompatible/unverified 回执仍可查看；畸形回执则清除观察并回到未知。
+
+严格只读的 CLI 诊断应直接执行已经安装的 bin，明确正确 `DSH_HOME` 与 DSH 安装锚点；上面的路径只是占位。**ASAR 成员元数据有意保持未知**，即使 Electron 自身能读 ASAR：普通文件句柄不能证明虚拟成员身份，open 还可能隐式解包写临时文件。因此读取器在打开成员前拒绝 ASAR 路径组件，不解包、不回退无界读取，也不替换成另一安装。运行页面仍可观察 Host 已加载插件的版本声明，但所选 DSH 元数据可保持未知。不得为了变绿替换 Desktop 运行时、另装 Host 或选用无关 CLI。`dsh plugin exec`、`pnpm exec`、`npx` 自身可能核对或安装依赖，不能作为“无写入”的保证。
 
 独立 doctor 只观察本地安装，不证明任何 Host/页面正在运行。未指定锚点时不再读取祖先的旧测试依赖；指定锚点无效时也不会回退猜测。JSON 保留 schema 1 并增加身份字段；原有兼容性与凭据权限检查保持严格，插件身份未知/不一致也返回 1。凭据缺失本身不算故障，更不要求重新登录。

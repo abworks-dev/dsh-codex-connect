@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { detectCompatibility } from '../src/compatibility.ts'
@@ -11,10 +11,15 @@ import {
 } from '../src/installation-metadata.ts'
 
 const roots: string[] = []
-afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))) })
+afterEach(async () => {
+  await Promise.all(roots.splice(0).map(async root => {
+    expect(await realpath(root)).toBe(root)
+    await rm(root, { recursive: true, force: true })
+  }))
+})
 
 async function fixture(): Promise<string> {
-  const root = await mkdtemp(join(tmpdir(), 'codex-connect-metadata-'))
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'codex-connect-metadata-')))
   roots.push(root)
   return root
 }
@@ -107,7 +112,9 @@ describe('bounded installation metadata', () => {
     expect(await readDshInstallationMetadata(anchor)).toMatchObject({ version: '0.2.0-rc.2', currentDshVersion: '0.2.0-rc.2' })
     await manifest(join(modules, '@deepseek-ai/dsh-compaction', 'package.json'), '@deepseek-ai/dsh-compaction', '0.1.7-rc.2')
     expect(await readDshInstallationMetadata(anchor)).not.toHaveProperty('currentDshVersion')
-    await rm(join(modules, '@deepseek-ai/dsh-compaction', 'package.json'))
+    const removedPeer = join(modules, '@deepseek-ai/dsh-compaction', 'package.json')
+    expect(await realpath(removedPeer)).toBe(removedPeer)
+    await rm(removedPeer)
     const unrelated = join(root, 'node_modules')
     await peers(unrelated)
     expect((await readDshInstallationMetadata(anchor))?.packageVersions['@deepseek-ai/dsh-compaction']).toBeUndefined()

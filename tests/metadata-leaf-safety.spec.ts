@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, open, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -10,9 +10,9 @@ vi.mock('node:fs/promises', async importOriginal => {
   const actual = await importOriginal<typeof import('node:fs/promises')>()
   return {
     ...actual,
-    readFile: vi.fn(async (...args: Parameters<typeof actual.readFile>) => {
-      if (guarded.has(String(args[0]))) throw new Error('forbidden fixture read')
-      return actual.readFile(...args)
+    open: vi.fn(async (...args: Parameters<typeof actual.open>) => {
+      if (guarded.has(String(args[0]))) throw new Error('forbidden fixture open')
+      return actual.open(...args)
     }),
   }
 })
@@ -20,8 +20,11 @@ vi.mock('node:fs/promises', async importOriginal => {
 const roots: string[] = []
 afterEach(async () => {
   guarded.clear()
-  vi.mocked(readFile).mockClear()
-  await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true })))
+  vi.mocked(open).mockClear()
+  await Promise.all(roots.splice(0).map(async root => {
+    expect(await realpath(root)).toBe(root)
+    await rm(root, { recursive: true, force: true })
+  }))
 })
 
 async function fixture(): Promise<string> {
@@ -33,8 +36,8 @@ async function manifest(path: string, name: string): Promise<void> {
   await mkdir(dirname(path), { recursive: true })
   await writeFile(path, JSON.stringify({ name, version: '0.2.0-rc.2' }))
 }
-function expectNotRead(...paths: string[]): void {
-  for (const path of paths) expect(vi.mocked(readFile).mock.calls.map(call => String(call[0]))).not.toContain(path)
+function expectNotOpened(...paths: string[]): void {
+  for (const path of paths) expect(vi.mocked(open).mock.calls.map(call => String(call[0]))).not.toContain(path)
 }
 
 describe('public manifest leaf admission', () => {
@@ -47,7 +50,7 @@ describe('public manifest leaf admission', () => {
     guarded.add(leaf); guarded.add(target)
     expect(await readInstalledPluginVersion(leaf)).toBeUndefined()
     expect(await readDshInstallationMetadata(leaf)).toBeUndefined()
-    expectNotRead(leaf, target)
+    expectNotOpened(leaf, target)
   })
 
   it('rejects a symlinked peer leaf instead of opening it or falling through to another root', async () => {
@@ -61,7 +64,7 @@ describe('public manifest leaf admission', () => {
     await manifest(join(root, 'node_modules/@deepseek-ai/dsh-llm/package.json'), '@deepseek-ai/dsh-llm')
     guarded.add(leaf); guarded.add(target)
     expect(await readPluginDependencyVersion('@deepseek-ai/dsh-llm', plugin)).toBeUndefined()
-    expectNotRead(leaf, target, join(root, 'node_modules/@deepseek-ai/dsh-llm/package.json'))
+    expectNotOpened(leaf, target, join(root, 'node_modules/@deepseek-ai/dsh-llm/package.json'))
   })
 
   it('preserves a logical Host directory symlink and its physical peer layout', async () => {
@@ -81,11 +84,12 @@ describe('public manifest leaf admission', () => {
     const leaf = join(root, 'package.json')
     await mkdir(leaf)
     expect(await readInstalledPluginVersion(leaf)).toBeUndefined()
+    expect(await realpath(leaf)).toBe(leaf)
     await rm(leaf, { recursive: true })
     await writeFile(leaf, ' '.repeat(256 * 1024 + 1))
     guarded.add(leaf)
     expect(await readInstalledPluginVersion(leaf)).toBeUndefined()
-    expectNotRead(leaf)
+    expectNotOpened(leaf)
   })
 
   it.skipIf(process.platform === 'win32')('rejects a real FIFO root/peer without starting a potentially blocking read', async () => {
@@ -101,6 +105,6 @@ describe('public manifest leaf admission', () => {
     await mkdir(dirname(peer), { recursive: true }); execFileSync('/usr/bin/mkfifo', [peer])
     guarded.add(peer)
     expect((await readDshInstallationMetadata(anchor))?.packageVersions['@deepseek-ai/dsh-llm']).toBeUndefined()
-    expectNotRead(leaf, peer)
+    expectNotOpened(leaf, peer)
   })
 })

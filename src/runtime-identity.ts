@@ -1,5 +1,6 @@
 /** Secret-free runtime receipt shared by Host and browser; no Node imports. */
-import type { CompatibilityEntry, CompatibilityReport, CompatibilityStatus } from './compatibility.ts'
+import { evaluateCompatibility } from './compatibility-policy.ts'
+import type { CompatibilityEntry, CompatibilityReport, CompatibilityStatus } from './compatibility-policy.ts'
 
 /** The observation surface, not proof that another process is running. */
 export type OpenAICodexDiagnosticScope = 'standalone' | 'selected-installation' | 'host'
@@ -86,18 +87,35 @@ export function parseOpenAICodexRuntimeReport(value: unknown): OpenAICodexRuntim
   const compaction = entry(packages['@deepseek-ai/dsh-compaction'])
   const piAi = entry(packages['@earendil-works/pi-ai'])
   if (llm === undefined || adapter === undefined || compaction === undefined || piAi === undefined) return undefined
-  const entries = [node, llm, adapter, compaction, piAi]
-  const aggregate = entries.some(item => item.status === 'incompatible') ? 'incompatible'
-    : entries.some(item => item.status === 'unknown') ? 'unknown'
-      : entries.some(item => item.status === 'unverified') ? 'unverified' : 'compatible'
-  // Mixed declared peers (and an anchored root mismatch) can make an otherwise
-  // compatible set unverified, but missing metadata can never become compatible.
-  if (compatibility.status !== aggregate && !(aggregate === 'compatible' && compatibility.status === 'unverified')) return undefined
+  // Recompute from versions using the same Node-free policy as the Host. A
+  // syntactically valid status/range label is not evidence of compatibility.
+  const computed = evaluateCompatibility({
+    nodeVersion: node.installed,
+    packageVersions: {
+      '@deepseek-ai/dsh-llm': llm.installed,
+      '@deepseek-ai/dsh-llm-pi-ai': adapter.installed,
+      '@deepseek-ai/dsh-compaction': compaction.installed,
+      '@earendil-works/pi-ai': piAi.installed,
+    },
+  })
+  const entries = [
+    [node, computed.node],
+    [llm, computed.packages['@deepseek-ai/dsh-llm']],
+    [adapter, computed.packages['@deepseek-ai/dsh-llm-pi-ai']],
+    [compaction, computed.packages['@deepseek-ai/dsh-compaction']],
+    [piAi, computed.packages['@earendil-works/pi-ai']],
+  ] as const
+  if (entries.some(([item, canonical]) => item.status !== canonical.status || item.supported !== canonical.supported)) return undefined
   if (identity.dshMetadataSource === 'unknown' && [llm, adapter, compaction].some(item => item.installed !== null)) return undefined
   const currentDshVersion = report.currentDshVersion
   if (currentDshVersion !== undefined && (!isRuntimeMetadataVersion(currentDshVersion)
     || identity.dshMetadataSource !== 'host-install-anchor'
     || [llm, adapter, compaction].some(item => item.installed !== currentDshVersion))) return undefined
+  // The selected root can disagree with a coherent peer triple. Without the
+  // root/triple version receipt it must remain unverified, never compatible.
+  const computedStatus = computed.status === 'compatible' && currentDshVersion === undefined
+    ? 'unverified' : computed.status
+  if (compatibility.status !== computedStatus) return undefined
   return {
     schemaVersion: 1,
     identity: {
@@ -110,13 +128,13 @@ export function parseOpenAICodexRuntimeReport(value: unknown): OpenAICodexRuntim
     ...currentDshVersion === undefined ? {} : { currentDshVersion },
     compatibility: {
       schemaVersion: 1,
-      status: compatibility.status,
-      node,
+      status: computedStatus,
+      node: computed.node,
       packages: {
-        '@deepseek-ai/dsh-llm': llm,
-        '@deepseek-ai/dsh-llm-pi-ai': adapter,
-        '@deepseek-ai/dsh-compaction': compaction,
-        '@earendil-works/pi-ai': piAi,
+        '@deepseek-ai/dsh-llm': computed.packages['@deepseek-ai/dsh-llm'],
+        '@deepseek-ai/dsh-llm-pi-ai': computed.packages['@deepseek-ai/dsh-llm-pi-ai'],
+        '@deepseek-ai/dsh-compaction': computed.packages['@deepseek-ai/dsh-compaction'],
+        '@earendil-works/pi-ai': computed.packages['@earendil-works/pi-ai'],
       },
     },
   }

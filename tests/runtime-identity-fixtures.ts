@@ -22,3 +22,35 @@ export function runtimeReport(loaded = '0.2.0-alpha.4', installed: string | null
     },
   }
 }
+
+/** Valid shape but contradictory policy/root claims; none may become evidence. */
+export function inconsistentRuntimeReports(): { name: string; report: OpenAICodexRuntimeReport }[] {
+  const node20 = runtimeReport()
+  node20.compatibility.node.installed = 'v20.0.0'
+  const mixed = runtimeReport()
+  delete mixed.currentDshVersion
+  mixed.compatibility.packages['@deepseek-ai/dsh-compaction'].installed = '0.2.1-alpha.3'
+  const piAi = runtimeReport()
+  piAi.compatibility.packages['@earendil-works/pi-ai'].installed = '0.99.0'
+  const future = runtimeReport()
+  future.currentDshVersion = '9.0.0'
+  for (const name of ['@deepseek-ai/dsh-llm', '@deepseek-ai/dsh-llm-pi-ai', '@deepseek-ai/dsh-compaction'] as const) {
+    future.compatibility.packages[name].installed = '9.0.0'
+  }
+  const changedPolicy = runtimeReport()
+  changedPolicy.compatibility.node.supported = '*'
+  const missingRoot = runtimeReport()
+  delete missingRoot.currentDshVersion
+  const falseUnknown = runtimeReport()
+  falseUnknown.compatibility.node.status = 'unknown'
+  falseUnknown.compatibility.status = 'unknown'
+  return [
+    { name: 'unsupported Node labelled compatible', report: node20 },
+    { name: 'mixed peers without currentDshVersion labelled compatible', report: mixed },
+    { name: 'unverified pi-ai labelled compatible', report: piAi },
+    { name: 'future DSH peers labelled compatible', report: future },
+    { name: 'a forged supported policy range', report: changedPolicy },
+    { name: 'compatible peers without a root coherence receipt', report: missingRoot },
+    { name: 'known Node metadata labelled unknown', report: falseUnknown },
+  ]
+}
