@@ -419,8 +419,10 @@ interface CompatibilityEvaluationInput {
 interface CompatibilityDetectionOptions extends CompatibilityEvaluationInput {
   /** Test seam for package metadata resolution; no package paths are returned. */
   readPackageVersion?: (name: CompatibilityPackageName) => string | null | undefined | Promise<string | null | undefined>;
-  /** Explicit package.json of the DSH installation owning a standalone CLI invocation. */
+  /** Explicit package.json selecting DSH installation metadata, not proof of a running Host. */
   installAnchor?: string;
+  /** Isolated fixture seam; production reads only this plugin's known manifest location. */
+  pluginManifestPath?: string;
 }
 /** Public contract data mirrored by compatibility.json without importing JSON at runtime. */
 export declare const COMPATIBILITY_CONTRACT: {
@@ -442,8 +444,24 @@ export declare const COMPATIBILITY_CONTRACT: {
 export declare function evaluateCompatibility(input?: CompatibilityEvaluationInput): CompatibilityReport;
 /** Alias for callers that prefer assessment terminology. */
 export declare const assessCompatibility: typeof evaluateCompatibility;
-/** Read installed package metadata and return only versions and statuses. */
+/** Read bounded metadata; an invalid explicit anchor never falls back to local peers. */
 export declare function detectCompatibility(options?: CompatibilityDetectionOptions): Promise<CompatibilityReport>;
+//#endregion
+//#region src/runtime-identity.d.ts
+/** The observation surface, not proof that another process is running. */
+type OpenAICodexDiagnosticScope = 'standalone' | 'selected-installation' | 'host';
+type OpenAICodexPluginVersionState = 'match' | 'mismatch' | 'unknown';
+type OpenAICodexDshMetadataSource = 'plugin-installation' | 'explicit-install-anchor' | 'host-install-anchor' | 'unknown';
+interface OpenAICodexRuntimeIdentity {
+  scope: OpenAICodexDiagnosticScope;
+  /** Version embedded in the code answering this diagnostic. */
+  loadedPluginVersion: string;
+  /** Current manifest of that same plugin installation, not loaded code. */
+  installedPluginVersion: string | null;
+  /** Version equality does not establish byte identity. */
+  pluginVersionState: OpenAICodexPluginVersionState;
+  dshMetadataSource: OpenAICodexDshMetadataSource;
+}
 //#endregion
 //#region src/doctor.d.ts
 /** Inputs that are safe to obtain without booting OAuth. */
@@ -465,6 +483,7 @@ interface OpenAICodexDiagnosticReport {
   package: 'dsh-codex-connect';
   version: string;
   node: string;
+  identity: OpenAICodexRuntimeIdentity;
   credentialFile: {
     path: string;
     state: 'missing' | 'owner-only' | 'permissions-too-broad' | 'not-a-regular-file' | 'unreadable-metadata';

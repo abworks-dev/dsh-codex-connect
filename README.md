@@ -54,12 +54,14 @@ Never paste an authorization URL, code, token, or account identifier into an iss
 
 ### 3. Check the installation
 
+For a package-manager-free diagnostic, run the already installed bin directly (replace these independently identified paths):
+
 ```sh
-dsh plugin --profile web exec dsh-codex-connect status --json
-dsh plugin --profile web exec dsh-codex-connect doctor --json
+node /absolute/profile/node_modules/dsh-codex-connect/lib/bin.js doctor --json \
+  --install-anchor /absolute/dsh/node_modules/@deepseek-ai/dsh/package.json
 ```
 
-`status --json` exits `0` when signed in and `1` when signed out, without starting OAuth. `doctor --json` reports local installation diagnostics without a network request or raw credentials. A passing diagnostic is not proof of model access; verify that with an actual request.
+`doctor --json` reports local installation metadata without a network request or raw credentials; an anchor does not prove that installation is running. Wrappers such as `dsh plugin exec` may reconcile dependencies. See [runtime identity and direct diagnostics](docs/runtime-identity.md), including Desktop/ASAR limitations. Development builds containing that change also distinguish page, Host-loaded and installed plugin versions in settings. A passing diagnostic is not proof of model access; an actual request requires separate authorization.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/franksong2702/dsh-codex-connect/main/docs/assets/en/hero.jpg" alt="Codex Connect — ChatGPT OAuth for DeepSeek Harness" width="100%">

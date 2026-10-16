@@ -1,6 +1,4 @@
-import { readFile, realpath } from 'node:fs/promises'
-import { basename, dirname, join, parse as parsePath } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { readDshInstallationMetadata, readPluginDependencyVersion } from './installation-metadata.ts'
 
 export const COMPATIBILITY_SCHEMA_VERSION = 1 as const
 export const SUPPORTED_NODE_RANGE = '^22.19.0 || >=24.0.0'
@@ -74,8 +72,10 @@ export interface CompatibilityEvaluationInput {
 export interface CompatibilityDetectionOptions extends CompatibilityEvaluationInput {
   /** Test seam for package metadata resolution; no package paths are returned. */
   readPackageVersion?: (name: CompatibilityPackageName) => string | null | undefined | Promise<string | null | undefined>
-  /** Explicit package.json of the DSH installation owning a standalone CLI invocation. */
+  /** Explicit package.json selecting DSH installation metadata, not proof of a running Host. */
   installAnchor?: string
+  /** Isolated fixture seam; production reads only this plugin's known manifest location. */
+  pluginManifestPath?: string
 }
 
 /** Public contract data mirrored by compatibility.json without importing JSON at runtime. */
@@ -89,13 +89,6 @@ export const COMPATIBILITY_CONTRACT = {
   },
   piAi: { package: PI_AI_PACKAGE, version: SUPPORTED_PI_AI_RANGE },
 } as const
-
-interface PackageJson {
-  name?: unknown
-  version?: unknown
-}
-
-const PACKAGE_JSON_SEARCH_DEPTH = 8
 
 /** Whether the API version is one of the explicitly targeted host versions. */
 export function isSupportedDshPluginApiVersion(value: string): boolean {
@@ -183,70 +176,34 @@ export function evaluateCompatibility(input: CompatibilityEvaluationInput = {}):
 /** Alias for callers that prefer assessment terminology. */
 export const assessCompatibility = evaluateCompatibility
 
-/**
- * Resolve installed package metadata without returning a filesystem path.
- * @param name - package to resolve from this plugin installation.
- * @returns its version, or undefined when metadata cannot be read.
- */
+/** Read selected installation metadata without loading peers or returning paths. */
 export async function readInstalledPackageVersion(name: string, installAnchor?: string): Promise<string | undefined> {
-  if (installAnchor !== undefined) {
-    let anchor: string
-    try {
-      anchor = await realpath(installAnchor)
-      const manifest = JSON.parse(await readFile(anchor, 'utf8')) as PackageJson
-      if (manifest.name !== '@deepseek-ai/dsh') return undefined
-    } catch {
-      return undefined
-    }
-    const packageDirectory = dirname(anchor)
-    const scopeDirectory = dirname(packageDirectory)
-    const modulesDirectory = dirname(scopeDirectory)
-    if (basename(packageDirectory) !== 'dsh' || basename(scopeDirectory) !== '@deepseek-ai'
-      || basename(modulesDirectory) !== 'node_modules') return undefined
-    try {
-      const parsed = JSON.parse(await readFile(join(modulesDirectory, name, 'package.json'), 'utf8')) as PackageJson
-      return parsed.name === name && typeof parsed.version === 'string' ? parsed.version : undefined
-    } catch {
-      // The exact host installation does not expose this package's metadata.
-      return undefined
-    }
-  }
-  let entry: string
-  try {
-    const resolved = import.meta.resolve(name)
-    if (!resolved.startsWith('file:')) return undefined
-    entry = fileURLToPath(resolved)
-  } catch {
-    return undefined
-  }
-  let directory = dirname(entry)
-  for (let depth = 0; depth < PACKAGE_JSON_SEARCH_DEPTH; depth += 1) {
-    const candidate = join(directory, 'package.json')
-    try {
-      const parsed = JSON.parse(await readFile(candidate, 'utf8')) as PackageJson
-      if (parsed.name === name && typeof parsed.version === 'string') return parsed.version
-    } catch {
-      // A package can have an unreadable or unrelated parent manifest. Keep the
-      // search bounded and report unknown rather than exposing filesystem detail.
-    }
-    const parent = parsePath(directory).root === directory ? directory : dirname(directory)
-    if (parent === directory) break
-    directory = parent
-  }
-  return undefined
+  if (installAnchor === undefined) return readPluginDependencyVersion(name)
+  const metadata = await readDshInstallationMetadata(installAnchor)
+  return metadata?.packageVersions[name as Exclude<CompatibilityPackageName, typeof PI_AI_PACKAGE>]
 }
 
-/** Read installed package metadata and return only versions and statuses. */
+/** Read bounded metadata; an invalid explicit anchor never falls back to local peers. */
 export async function detectCompatibility(options: CompatibilityDetectionOptions = {}): Promise<CompatibilityReport> {
-  // pi-ai is plugin-owned; the host anchor selects only the DSH peer installation.
-  const readVersion = options.readPackageVersion ?? ((name: CompatibilityPackageName) => readInstalledPackageVersion(name,
-    name === PI_AI_PACKAGE ? undefined : options.installAnchor))
-  const packageVersions = options.packageVersions ?? options.packages ?? options.installed?.packages
-  const resolvedPackages = packageVersions === undefined
-    ? Object.fromEntries(await Promise.all(COMPATIBILITY_PACKAGES.map(async name => [name, await readVersion(name)] as const)))
-    : packageVersions
-  return evaluateCompatibility({
+  const suppliedPackages = options.packageVersions ?? options.packages ?? options.installed?.packages
+  let packageVersions = suppliedPackages
+  let anchoredRootMismatch = false
+  if (packageVersions === undefined) {
+    const installation = options.installAnchor === undefined || options.readPackageVersion !== undefined
+      ? undefined : await readDshInstallationMetadata(options.installAnchor)
+    anchoredRootMismatch = installation !== undefined && installation.currentDshVersion === undefined
+    const readVersion = options.readPackageVersion ?? ((name: CompatibilityPackageName) => {
+      // pi-ai belongs to this plugin, never to the independently selected Host.
+      if (name === PI_AI_PACKAGE || options.installAnchor === undefined) {
+        return readPluginDependencyVersion(name, options.pluginManifestPath)
+      }
+      return installation?.packageVersions[name]
+    })
+    packageVersions = Object.fromEntries(await Promise.all(COMPATIBILITY_PACKAGES.map(async name => [name, await readVersion(name)] as const)))
+  }
+  const report = evaluateCompatibility({
     nodeVersion: options.nodeVersion ?? options.node ?? options.installed?.node ?? process.version,
-    packageVersions: resolvedPackages,
+    packageVersions,
   })
+  return anchoredRootMismatch && report.status === 'compatible' ? { ...report, status: 'unverified' } : report
 }

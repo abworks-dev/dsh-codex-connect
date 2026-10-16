@@ -56,12 +56,14 @@ dsh web
 
 ### 3. 检查安装
 
+若要求诊断不经过包管理器，请直接运行已经安装的 bin（替换为已经独立识别的实际路径）：
+
 ```sh
-dsh plugin --profile web exec dsh-codex-connect status --json
-dsh plugin --profile web exec dsh-codex-connect doctor --json
+node /absolute/profile/node_modules/dsh-codex-connect/lib/bin.js doctor --json \
+  --install-anchor /absolute/dsh/node_modules/@deepseek-ai/dsh/package.json
 ```
 
-`status --json` 在已登录时返回 `0`，未登录时返回 `1`，不会启动 OAuth。`doctor --json` 输出本地安装诊断，不发送网络请求，也不包含原始凭据。诊断通过不代表账户具有模型权限；实际可用性仍需通过真实请求验证。
+`doctor --json` 只读本地安装元数据，不请求网络或输出原始凭据；指定安装锚点不证明该安装正在运行。`dsh plugin exec` 等包装命令自身可能核对或安装依赖。详见[运行身份与直接诊断](runtime-identity.md)，包括 Desktop/ASAR 限制。包含本改动的开发构建还会在设置中区分页面、Host 已加载和磁盘安装版本。诊断通过不代表模型权限，实际请求须另获授权。
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/franksong2702/dsh-codex-connect/main/docs/assets/zh/hero.jpg" alt="Codex Connect — 为 DeepSeek Harness 接入 ChatGPT OAuth" width="100%">
