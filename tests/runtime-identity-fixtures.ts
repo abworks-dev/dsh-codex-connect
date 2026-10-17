@@ -1,8 +1,9 @@
 import type { OpenAICodexRuntimeReport } from '../src/runtime-identity.ts'
+import { SUPPORTED_DSH_PLUGIN_API_RANGE } from '../src/compatibility-policy.ts'
 
 /** Synthetic, credential-free evidence shared by unit and real-browser tests. */
 export function runtimeReport(loaded = '0.2.0-alpha.4', installed: string | null = loaded): OpenAICodexRuntimeReport {
-  const supported = '0.1.7-rc.1 || 0.1.7-rc.2 || 0.2.0-rc.1 || 0.2.0-rc.2 || 0.2.1-alpha.1 || 0.2.1-alpha.2 || 0.2.1-alpha.3'
+  const supported = SUPPORTED_DSH_PLUGIN_API_RANGE
   const entry = () => ({ supported, installed: '0.2.0-rc.2', status: 'compatible' as const })
   return {
     schemaVersion: 1,
