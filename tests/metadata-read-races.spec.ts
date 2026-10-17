@@ -291,10 +291,26 @@ describe('same-object manifest reads', () => {
     const root = await fixture()
     const leaf = join(root, 'package.json')
     const replacement = join(root, 'replacement.json')
+    const displaced = join(root, 'opened-original.json')
     await manifest(leaf)
     await writeFile(replacement, JSON.stringify({ name: PLUGIN, version: '0.1.7-rc.1' }))
-    io.beforeRead = async (filename, index) => { if (filename === leaf && index === 0) await replaceEntry(replacement, leaf) }
-    expect(await readInstalledPluginVersion(leaf)).toBe(VERSION)
+    // Windows need not allow replacing an open destination in one rename. Move
+    // that object aside, then install a distinct file at the original path.
+    // The read must still use the original descriptor on every platform.
+    let mutation: Promise<void> | undefined
+    io.beforeRead = async (filename, index) => {
+      if (filename !== leaf || index !== 0) return
+      mutation = (async () => {
+        await replaceEntry(leaf, displaced)
+        await replaceEntry(replacement, leaf)
+      })()
+      await mutation
+    }
+    const result = await readInstalledPluginVersion(leaf)
+    expect(mutation).toBeDefined()
+    // Surface fixture mutation errors outside the production fail-closed catch.
+    await mutation
+    expect(result).toBe(VERSION)
     expect(vi.mocked(open).mock.calls).toHaveLength(1)
   })
 
