@@ -12,33 +12,37 @@ Codex Connect adds the `openai-codex` model provider to the normal Harness agent
 
 ## Quick start
 
-This guide describes the published pairing below. Check `dsh --version` first and use `doctor --json` for local diagnostics; the CLI version alone does not prove which model-runtime packages are installed, and missing metadata is reported as unknown. For other versions, use [Installation and upgrades](INSTALL.md). A moving npm tag such as `alpha` is not a compatibility guarantee.
+This guide recommends Codex Connect `0.2.0-alpha.5` / DSH `0.2.1-rc.1`; the other exact supported hosts are listed below. Check `dsh --version` first and use `doctor --json` for local diagnostics; the CLI version alone does not prove which model-runtime packages are installed, and missing metadata is reported as unknown. For other versions, use [Installation and upgrades](INSTALL.md). A moving npm tag such as `alpha` is not a compatibility guarantee.
 
 | Requirement | Verified pairing |
 |---|---|
-| Codex Connect | `0.2.0-alpha.3` |
-| DeepSeek Harness | `0.1.7-rc.1`, `0.1.7-rc.2`, `0.2.0-rc.1`, `0.2.0-rc.2` or `0.2.1-alpha.1` (consistent package set) |
+| Codex Connect | `0.2.0-alpha.5` |
+| DeepSeek Harness | `0.1.7-rc.1`, `0.1.7-rc.2`, `0.2.0-rc.1`, `0.2.0-rc.2`, `0.2.1-alpha.1`, `0.2.1-alpha.2`, `0.2.1-alpha.3`, `0.2.1-alpha.4`, `0.2.1-alpha.5` or `0.2.1-rc.1` (consistent package set) |
 | Node.js | `^22.19.0 \|\| >=24.0.0` |
 | Account | ChatGPT OAuth with access to the requested Codex model; availability is decided by OpenAI |
 
-[`0.2.0-alpha.3`](docs/release-notes/0.2.0-alpha.3.md) adds official Desktop sign-in compatibility and Desktop-specific account diagnostics while preserving the Web flow. Desktop uses its own profile and bundled CLI; follow the [Desktop installation instructions](INSTALL.md#official-desktop). The declared host versions, defaults and account storage are unchanged.
+`0.2.0-alpha.4` extends exact host support to DSH `0.2.1-alpha.2` and `0.2.1-alpha.3`, retaining the previous five hosts. Existing supported hosts do not require an upgrade; Task remains paused and defaults are unchanged.
 
-[`0.2.0-alpha.2`](docs/release-notes/0.2.0-alpha.2.md) publishes exact DSH `0.2.1-alpha.1` compatibility and the cross-route image selection handle repair. The earlier `0.2.0-alpha.1` artifact remains unchanged and rejects that host. Existing supported hosts do not require an upgrade.
+**Published maintenance release:** [`0.2.0-alpha.5`](https://github.com/franksong2702/dsh-codex-connect/releases/tag/v0.2.0-alpha.5) delivers exact DSH `0.2.1-alpha.4`, `0.2.1-alpha.5` and `0.2.1-rc.1` support plus Host/browser runtime-identity diagnostics, retaining the seven previously published hosts. Diagnostics share one version policy; see the [compatibility record](docs/agent-notes/dsh-021-alpha5-rc1-compatibility.md) and [alpha.4 client-state repair](docs/agent-notes/dsh-021-alpha4-compatibility.md). Publication and keyless verification do not establish new real-account, Desktop or authenticated-browser acceptance; #339 remains open for separate acceptance.
 
-As of 2026-10-10, npm `alpha` points to `0.2.0-alpha.3`, while `latest` remains `0.2.0-alpha.1`. Default installation still selects the earlier Alpha; the `latest` tag does not make it a stable release. Use the exact version below for these DSH pairings; a moving npm tag is not a compatibility guarantee for other hosts.
+Historical release [`0.2.0-alpha.3`](docs/release-notes/0.2.0-alpha.3.md) adds official Desktop sign-in compatibility and Desktop-specific account diagnostics while preserving the Web flow. Desktop uses its own profile and bundled CLI; follow the [Desktop installation instructions](INSTALL.md#official-desktop). The declared host versions, defaults and account storage are unchanged.
 
-[`0.2.0-alpha.1`](docs/release-notes/0.2.0-alpha.1.md) adds `gpt-6.1-sol` through a model-catalog fallback and begins the shorter independent plugin numbering. The four supported DSH versions are unchanged; no host upgrade is required.
+Historical release [`0.2.0-alpha.2`](docs/release-notes/0.2.0-alpha.2.md) publishes exact DSH `0.2.1-alpha.1` compatibility and the cross-route image selection handle repair. The earlier `0.2.0-alpha.1` artifact remains unchanged and rejects that host. Existing supported hosts do not require an upgrade.
+
+As of 2026-10-17, npm `alpha` points to `0.2.0-alpha.5`, while `latest` remains `0.2.0-alpha.1`. Default installation still selects the earlier Alpha; the `latest` tag does not make it a stable release. Use the exact version below for these DSH pairings; a moving npm tag is not a compatibility guarantee for other hosts.
+
+Historical release [`0.2.0-alpha.1`](docs/release-notes/0.2.0-alpha.1.md) adds `gpt-6.1-sol` through a model-catalog fallback and begins the shorter independent plugin numbering. The four supported DSH versions are unchanged; no host upgrade is required.
 
 It retains Alpha 4.54's handling of initial system instructions and tool definitions on DSH 0.2.0-rc.2, diagnostics for differing host/plugin provider libraries, and Canary's normal-request checks, along with Alpha 4.53's core maintenance changes, existing-task recovery and safety, and 4.52's [opt-in local request metrics](docs/request-metrics.md). Collection stays off until a private directory is configured; unknown usage is not zero. No Task reopening or model-library/OAuth upgrade is included.
 
-The package passed keyless installation/runtime regression on all five exact DSH versions above. Task controls remain paused: activation is rejected and existing current-host browser regressions show no controls in fresh Sessions. These checks do not establish live OAuth, real-account image editing, authenticated browser acceptance on the new host, or full user acceptance; migration of earlier Task grants across a Harness upgrade is not verified. Older supported pairings and their task behavior are documented in [Installation and upgrades](INSTALL.md).
+The package passed keyless installation/runtime regression on all ten exact DSH versions above. Task controls remain paused: activation is rejected and existing current-host browser regressions show no controls in fresh Sessions. These checks do not establish live OAuth, real-account image editing, authenticated browser acceptance on the new host, or full user acceptance; migration of earlier Task grants across a Harness upgrade is not verified. Older supported pairings and their task behavior are documented in [Installation and upgrades](INSTALL.md).
 
-Separately, the maintainer reported successful login and normal use on Desktop `0.2.0-rc.2` with the identified local adaptation build. The released client differs only by the package-version string; this is not new live-account acceptance of the public npm artifact. See the [Desktop acceptance record](INSTALL.md#official-desktop).
+Historically, on 2026-10-10 the maintainer reported successful login and normal use on Desktop `0.2.0-rc.2` with the identified local adaptation build. Only the historical `0.2.0-alpha.3` client was compared with that local adaptation and found to differ only by the package-version string. This comparison does not establish `0.2.0-alpha.4` Desktop or live-account acceptance, nor acceptance of later npm artifacts; no new real Desktop acceptance was performed. See the [Desktop acceptance record](INSTALL.md#official-desktop).
 
 ### 1. Install
 
 ```sh
-dsh plugin --profile web add dsh-codex-connect@0.2.0-alpha.3
+dsh plugin --profile web add dsh-codex-connect@0.2.0-alpha.5
 dsh web
 ```
 
@@ -52,12 +56,14 @@ Never paste an authorization URL, code, token, or account identifier into an iss
 
 ### 3. Check the installation
 
+For a package-manager-free diagnostic, run the already installed bin directly (replace these independently identified paths):
+
 ```sh
-dsh plugin --profile web exec dsh-codex-connect status --json
-dsh plugin --profile web exec dsh-codex-connect doctor --json
+node /absolute/profile/node_modules/dsh-codex-connect/lib/bin.js doctor --json \
+  --install-anchor /absolute/dsh/node_modules/@deepseek-ai/dsh/package.json
 ```
 
-`status --json` exits `0` when signed in and `1` when signed out, without starting OAuth. `doctor --json` reports local installation diagnostics without a network request or raw credentials. A passing diagnostic is not proof of model access; verify that with an actual request.
+`doctor --json` reports local installation metadata without a network request or raw credentials; an anchor does not prove that installation is running. Wrappers such as `dsh plugin exec` may reconcile dependencies. See [runtime identity and direct diagnostics](docs/runtime-identity.md), including Desktop/ASAR limitations. Development builds containing that change also distinguish page, Host-loaded and installed plugin versions in settings. A passing diagnostic is not proof of model access; an actual request requires separate authorization.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/franksong2702/dsh-codex-connect/main/docs/assets/en/hero.jpg" alt="Codex Connect — ChatGPT OAuth for DeepSeek Harness" width="100%">
@@ -143,6 +149,7 @@ A missing entry in [verified-compatibility.json](verified-compatibility.json) me
 - [Installation and upgrades](INSTALL.md)
 - [Configuration, diagnostics, and recovery](docs/reference.md)
 - [Local request metrics: enable, report, and disable](docs/request-metrics.md)
+- [Explicit, bounded bili preflight activity (source change; default off)](docs/preflight-activity.md)
 - [Migration from `dsh-codex`](MIGRATION.md)
 - [Architecture and security details](docs/design.md)
 - [Auto-review behavior](docs/auto-review.md)
@@ -162,3 +169,5 @@ pnpm run check:dsh-install
 Copyright 2026 Frank Song for Codex Connect modifications and additional work. This project contains software derived from [Yan-Zero/dsh-codex](https://github.com/Yan-Zero/dsh-codex); Copyright 2026 Yan-Zero is retained for upstream material. Both are distributed under Apache-2.0; see [NOTICE](NOTICE).
 
 Published `0.2.0-alpha.1` adds `gpt-6.1-sol` to the manual model catalog and configuration selector. It exposes Low, Medium, High, Xhigh and Max; Default omits effort, and Ultra orchestration is unsupported. Codex catalog defaults remain 272,000 tokens with an optional 872,000 local ceiling, not the API product window or proof of account access. See [metadata and validation](docs/agent-notes/gpt61-sol-support.md). No Adaptive Task grants are expanded.
+
+Alpha 5 capability calibration: the [source comparison](docs/agent-notes/gpt61-capability-calibration.md) distinguishes the pinned 272k fallback/872k local ceiling, official Work/Codex product text advertising 500k surfaced in search results, and separate API limits. Only Sol61's policy-source pin is refreshed; defaults, native-provider metadata precedence and Fast/effort behavior remain unchanged. No account/endpoint capacity was verified.

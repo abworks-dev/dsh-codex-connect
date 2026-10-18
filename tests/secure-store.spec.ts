@@ -16,6 +16,31 @@ function memoryKeyStore(): CredentialKeyStore {
 async function filename(): Promise<string> { root = await mkdtemp(join(tmpdir(), 'secure-codex-')); return join(root, 'auth.json') }
 
 describe('OS-protected encrypted storage', () => {
+  it('uses the resolved pathname only as an OS-entry locator and generates independent random keys', async () => {
+    const path = await filename()
+    const first = new OSCredentialKeyStore(path)
+    const same = new OSCredentialKeyStore(join(root!, 'nested', '..', 'auth.json'))
+    const other = new OSCredentialKeyStore(join(root!, 'other.json'))
+    const locator = first.account
+    expect(locator).toMatch(/^[a-f0-9]{64}$/u)
+    expect(new OSCredentialKeyStore('/synthetic/document.json').account).toBe('7822d38326f81c722446eff432ae9f7f265afd31e8c34e9193bc702a4e3f765d')
+    expect(same.account).toBe(locator)
+    expect(other.account).not.toBe(locator)
+    const key = await credentialKey(first, true)
+    const otherKey = await credentialKey(other, true)
+    expect(key).toHaveLength(32)
+    expect(key.equals(Buffer.from(locator, 'hex'))).toBe(false)
+    expect(otherKey.equals(key)).toBe(false)
+    expect(await credentialKey(same, false)).toEqual(key)
+    // Recreating an entry at the identical path creates a fresh key; no path KDF.
+    await first.delete()
+    const replacement = await credentialKey(same, true)
+    expect(replacement.equals(key)).toBe(false)
+    expect(await credentialKey(other, false)).toEqual(otherKey)
+    const envelope = JSON.parse(encryptCredentialDocument(JSON.stringify(credential), path, replacement))
+    expect(() => decryptCredentialDocument(envelope, path, Buffer.from(locator, 'hex'))).toThrow(/authenticated/)
+    await same.delete(); await other.delete()
+  })
   it('fails closed before OAuth or a token write if the OS store is locked', async () => {
     const path = await filename()
     const fail = async (): Promise<never> => { throw new Error('locked') }

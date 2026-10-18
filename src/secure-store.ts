@@ -26,6 +26,9 @@ export class OSCredentialKeyStore implements CredentialKeyStore {
   readonly account: string
   private entry: Promise<AsyncEntry> | undefined
   constructor(filename: string) {
+    // Non-secret locator only: this digest selects an OS entry. It is never a
+    // password verifier, encryption key, or input to key generation. Preserve
+    // this mapping so candidate encrypted documents retain their original key.
     this.account = createHash('sha256').update(resolve(filename)).digest('hex')
   }
   private getEntry(): Promise<AsyncEntry> {

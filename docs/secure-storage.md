@@ -20,6 +20,13 @@ A random 256-bit encryption key is stored through the pinned
 | Windows | Credential Manager |
 | Linux | Secret Service, such as an unlocked GNOME Keyring or compatible service |
 
+The OS-entry account identifier is the SHA-256 digest of the resolved document
+pathname. It is a non-secret locator, not a password verifier or key derivation.
+The encryption key is independently generated with `randomBytes(32)` and read
+back from the OS entry before use. Recreating the same entry generates a new
+random key; knowing the pathname or its digest cannot decrypt the document.
+The locator mapping is retained to avoid orphaning keys written by this draft.
+
 Only the short key is placed in the OS store. This avoids platform credential
 blob limits while retaining the existing 16-account, 512-KiB plaintext-document
 limit. The JSON on disk contains ciphertext and encryption metadata, no OAuth
@@ -84,3 +91,18 @@ memory. OS storage protects persistence; it does not remove the plugin's full
 host trust or protect against a compromised authorized host process. Native
 Mac/Windows/Linux credential-store acceptance remains a separate installation
 check; mocked tests do not prove it.
+
+## Scanner claim under review
+
+CodeQL alert 31 (`js/insufficient-password-hash`) at the original draft head
+`6be498b074fd3152652869ed090f864d743e9fc1` reports the pathname digest as a
+password hash. Its three reported sources are `join(root, 'synthetic-oauth.json')`
+or the dotted equivalent in the delegation fixtures; none reads file contents.
+The digest reaches only `AsyncEntry`'s account argument. AES receives the
+independent 32-byte OS-store secret returned by `credentialKey`, not this digest.
+The added synthetic regression checks locator stability, path isolation,
+independent fresh keys on the same path, and rejection of the locator as an
+AES decryption key. This evidence addresses the specific claim, not a complete
+security audit or native credential-store acceptance. The alert is neither
+dismissed nor suppressed; the independent result check must be evaluated again
+on the updated head and any remaining failure reported explicitly.
