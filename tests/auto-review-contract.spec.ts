@@ -185,12 +185,16 @@ describe('Auto-review action and context contract', () => {
     await mkdir(outside)
     await writeFile(join(workspace, 'README.md'), 'Synthetic fixture.')
     await writeFile(join(workspace, 'credentials.json'), 'Synthetic fixture.')
+    await writeFile(join(workspace, '.openai-codex-auth.json'), 'Synthetic fixture.')
+    await writeFile(join(workspace, '.openai-codex-auth.json.v1-backup'), 'Synthetic fixture.')
     await writeFile(join(workspace, 'AGENTS.md'), 'Synthetic instructions.')
     await writeFile(join(outside, 'private.txt'), 'Synthetic fixture.')
     await symlink(join(outside, 'private.txt'), join(workspace, 'alias.txt'))
     await symlink(outside, join(workspace, 'alias-directory'), 'dir')
     await symlink(join(outside, 'absent.txt'), join(workspace, 'dangling.txt'))
     await symlink(join(workspace, 'credentials.json'), join(workspace, 'innocent.txt'))
+    await symlink(join(workspace, '.openai-codex-auth.json'), join(workspace, 'profile-notes.txt'))
+    await symlink(join(workspace, '.openai-codex-auth.json.v1-backup'), join(workspace, 'old-notes.txt'))
     await symlink(join(workspace, 'AGENTS.md'), join(workspace, 'notes.md'))
     const action = (toolName: string, file_path: string) => ({
       toolName, arguments: { file_path, ...toolName === 'write' ? { content: 'Synthetic fixture.' } : {} },
@@ -201,6 +205,7 @@ describe('Auto-review action and context contract', () => {
       await expect(resolveAutoReviewLocalPolicy(action('write', 'new.md'))).resolves.toEqual({ riskFloor: 'medium' })
       for (const [tool, path] of [
         ['read', 'alias.txt'], ['write', 'alias-directory/new.md'], ['write', 'dangling.txt'],
+        ['read', 'profile-notes.txt'], ['write', 'old-notes.txt'],
         ['read', 'innocent.txt'], ['read', 'missing.txt'], ['write', 'missing-directory/new.md'], ['write', 'notes.md'],
       ]) {
         await expect(resolveAutoReviewLocalPolicy(action(tool!, path!))).resolves.toHaveProperty('humanReason')

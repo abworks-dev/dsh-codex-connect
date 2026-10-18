@@ -140,6 +140,9 @@ describe('Auto-review approval answerer', () => {
 
   it.each([
     ['read', '{"file_path":".env"}'],
+    ['read', '{"file_path":".openai-codex-auth.json"}'],
+    ['read', '{"file_path":"nested/.openai-codex-auth.json.v1-backup"}'],
+    ['write', '{"file_path":".openai-codex-auth.json","content":"fixture"}'],
     ['write', '{"file_path":"README.md","content":"password=synthetic-secret"}'],
   ])('delegates %s without calling the external reviewer', async (toolName, args) => {
     const target = fixture({ toolName })

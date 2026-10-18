@@ -33,3 +33,5 @@ Auto-review 是 Codex 官方能力，Codex Connect 把它的审核器接入符�
 OpenAI 已把 Auto-review 记录为 Codex 功能，但没有承诺 `codex-auto-review` OAuth 路由是稳定公共 API。独立的 `auto-review-probe` 命令只检查当前 OAuth 路由能否完成一次合成的空操作评估。运行时失败始终回到人工审批，绝不会放行执行。
 
 参见 [OpenAI Auto-review](https://learn.chatgpt.com/docs/sandboxing/auto-review)、[OpenAI 审批与护栏](https://developers.openai.com/api/docs/guides/agents/guardrails-approvals) 和 [Issue #84](https://github.com/franksong2702/dsh-codex-connect/issues/84)。
+
+即使插件凭据文件 `.openai-codex-auth.json` 及其 `.v1-backup` 直接位于工作区内，或通过别名访问，也始终交还宿主审批。路径检查不读取或发送这些文件的内容。
