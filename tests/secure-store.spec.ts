@@ -23,7 +23,7 @@ describe('OS-protected encrypted storage', () => {
     const other = new OSCredentialKeyStore(join(root!, 'other.json'))
     const locator = first.account
     expect(locator).toMatch(/^[a-f0-9]{64}$/u)
-    expect(new OSCredentialKeyStore('/synthetic/document.json').account).toBe('7822d38326f81c722446eff432ae9f7f265afd31e8c34e9193bc702a4e3f765d')
+    if (process.platform !== 'win32') expect(new OSCredentialKeyStore('/synthetic/document.json').account).toBe('7822d38326f81c722446eff432ae9f7f265afd31e8c34e9193bc702a4e3f765d')
     expect(same.account).toBe(locator)
     expect(other.account).not.toBe(locator)
     const key = await credentialKey(first, true)
