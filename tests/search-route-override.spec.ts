@@ -40,13 +40,18 @@ describe('supported DSH search route override', () => {
     expect(() => selectOpenAICodexSearchRoute({} as WebRuntime, 'openai-codex'))
       .toThrow('does not expose the supported search route field')
   })
-  function volatileHost() {
-    let route: string | undefined = 'fixture-original'
+  function volatileHost(initial: string | undefined = 'fixture-original') {
+    let route: string | undefined = initial
     const reference = Object.freeze({ get: () => route })
     const config = { searchProvider: reference, fetchProvider: Object.freeze({ get: () => 'fixture-fetch' }) }
-    const target = { config }
-    return { web: target as unknown as WebRuntime, target, config, reference,
-      change: (value: string | undefined) => { route = value },
+    const listeners = new Set<(paths: readonly (readonly string[])[]) => void>()
+    const owner = { fiber: { config }, on(_name: string, listener: (paths: readonly (readonly string[])[]) => void) {
+      listeners.add(listener)
+      return () => { listeners.delete(listener) }
+    } }
+    const target = { config, ctx: owner }
+    return { web: target as unknown as WebRuntime, target, config, reference, listeners,
+      change: (value: string | undefined) => { route = value; for (const listener of listeners) listener([['searchProvider']]) },
       selected: () => Reflect.get(target, 'config').searchProvider.get() as string | undefined }
   }
 
@@ -59,6 +64,7 @@ describe('supported DSH search route override', () => {
     restore(); restore()
     expect(f.target.config).toBe(f.config)
     expect(f.selected()).toBe('fixture-original')
+    expect(f.listeners.size).toBe(0)
   })
 
   it('yields to a later live Host selection and retains it after disposal', () => {
@@ -71,6 +77,27 @@ describe('supported DSH search route override', () => {
     expect(f.selected()).toBe('fixture-newer')
   })
 
+
+  it.each([
+    { initial: 'fixture-original', readBetween: true },
+    { initial: 'fixture-original', readBetween: false },
+    { initial: undefined, readBetween: true },
+    { initial: undefined, readBetween: false },
+  ])('keeps Host round-trip priority for $initial, intermediate search=$readBetween', ({ initial, readBetween }) => {
+    const f = volatileHost(initial)
+    // Explicit undefined must stay unset rather than use the helper's default.
+    if (initial === undefined) f.change(undefined)
+    const restore = selectOpenAICodexSearchRoute(f.web, 'openai-codex')
+    expect(f.selected()).toBe('openai-codex')
+    f.change('fixture-newer')
+    if (readBetween) expect(f.selected()).toBe('fixture-newer')
+    f.change(initial)
+    expect(f.selected()).toBe(initial)
+    restore()
+    expect(f.selected()).toBe(initial)
+    expect(f.listeners.size).toBe(0)
+  })
+
   it('preserves another owner replacing the config object', () => {
     const f = volatileHost()
     const restore = selectOpenAICodexSearchRoute(f.web, 'openai-codex')
@@ -78,6 +105,7 @@ describe('supported DSH search route override', () => {
     Reflect.set(f.target, 'config', next)
     restore()
     expect(f.target.config).toBe(next)
+    expect(f.listeners.size).toBe(0)
   })
 
   it('rejects frozen or malformed config before changing the runtime', () => {
@@ -86,7 +114,12 @@ describe('supported DSH search route override', () => {
     expect(() => selectOpenAICodexSearchRoute(f.web, 'openai-codex')).toThrow()
     expect(f.target.config).toBe(f.config)
     const config = { searchProvider: { get: () => 42 } }
-    const target = { config }
+    const listeners = new Set<(paths: readonly (readonly string[])[]) => void>()
+    const owner = { fiber: { config }, on(_name: string, listener: (paths: readonly (readonly string[])[]) => void) {
+      listeners.add(listener)
+      return () => { listeners.delete(listener) }
+    } }
+    const target = { config, ctx: owner }
     expect(() => selectOpenAICodexSearchRoute(target as unknown as WebRuntime, 'openai-codex')).toThrow()
     expect(target.config).toBe(config)
   })

@@ -1,6 +1,7 @@
 /** Runtime search-route adapter for the supported DeepSeek Harness release. */
 
 import type WebRuntime from '@deepseek-ai/dsh-web'
+import type { Context } from '@deepseek-ai/cordis'
 
 const SEARCH_PROVIDER_FIELD = 'searchProviderId'
 
@@ -40,24 +41,34 @@ function selectVolatileRoute(web: WebRuntime, provider: string): () => void {
     if (value !== undefined && typeof value !== 'string') throw new Error('The installed DeepSeek Harness returned an invalid search route')
     return value
   }
-  const previous = read()
+  read()
+  // A traced service's ctx getter belongs to the caller. Its own data slot
+  // retains the actual owner, to which Loader scopes volatile-update events.
+  const owner = Object.getOwnPropertyDescriptor(web, 'ctx')?.value as Context | undefined
+  if (owner === undefined || typeof owner.on !== 'function' || owner.fiber.config !== config) {
+    throw new Error('The installed DeepSeek Harness does not expose the supported search route owner')
+  }
+  let selectedByPlugin = true
+  const stop = owner.on('loader/volatile-update', (paths) => {
+    if (paths.some(path => path.length === 0 || path[0] === 'searchProvider')) selectedByPlugin = false
+  })
   // Do not write the Host's Volatile reference or persistent settings. Its owner
-  // keeps updating the original reference; a newer choice takes precedence.
-  const selected = Object.freeze({ get: () => {
-    const current = read()
-    return current === previous ? provider : current
-  } })
+  // synchronously notifies each committed change, including A -> B -> A between
+  // searches. Once that happens, this activation never takes selection back.
+  const selected = Object.freeze({ get: () => selectedByPlugin ? provider : read() })
   const facade = new Proxy(config, { get(target, key, receiver) {
     const current: unknown = Reflect.get(target, key, receiver)
     return key === 'searchProvider' && current === reference ? selected : current
   } })
   if (!Reflect.set(web, 'config', facade) || Reflect.get(web, 'config') !== facade) {
+    stop()
     throw new Error('The installed DeepSeek Harness refused the search route change')
   }
   let active = true
   return () => {
     if (!active) return
     active = false
+    stop()
     if (Reflect.get(web, 'config') === facade && !Reflect.set(web, 'config', config)) {
       throw new Error('The installed DeepSeek Harness refused search route restoration')
     }

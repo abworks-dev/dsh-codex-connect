@@ -2,15 +2,18 @@ import assert from 'node:assert/strict'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 
 /** Exercise optional Codex Search through this exact Host's WebRuntime, without real accounts/network. */
 export async function checkInstalledSearchRoute(importHost, CodexConnect) {
-  const [{ Context }, { default: Llm }, { default: Web }] = await Promise.all([
-    '@deepseek-ai/cordis', '@deepseek-ai/dsh-llm', '@deepseek-ai/dsh-web',
+  const [{ Context }, { default: Llm }, { default: Web }, { default: Loader }] = await Promise.all([
+    '@deepseek-ai/cordis', '@deepseek-ai/dsh-llm', '@deepseek-ai/dsh-web', '@deepseek-ai/cordis-plugin-loader',
   ].map(importHost))
   const root = await mkdtemp(join(tmpdir(), 'codex-installed-search-'))
   const oldHome = process.env.DSH_HOME
   const oldFetch = globalThis.fetch
+  const oldSearchEnv = process.env.DSH_WEB_SEARCH_PROVIDER
+  delete process.env.DSH_WEB_SEARCH_PROVIDER
   const ctx = new Context()
   process.env.DSH_HOME = root
   let dispatches = 0, fallbackCalls = 0, newerCalls = 0
@@ -29,7 +32,17 @@ export async function checkInstalledSearchRoute(importHost, CodexConnect) {
       ] })
     }
     await ctx.plugin(Llm)
-    await ctx.plugin(Web, { searchProvider: 'fixture-fallback', fetchProvider: 'fixture-fetch' })
+    await ctx.plugin(Loader)
+    ctx.baseUrl = pathToFileURL(root).href + '/'
+    ctx.loader.internal = { version: 'v2', async import(specifier) {
+      assert.equal(specifier, 'fixture-web')
+      return Web
+    } }
+    await ctx.loader.root.create({ id: 'fixture-web', name: 'fixture-web',
+      config: { searchProvider: 'fixture-fallback', fetchProvider: 'fixture-fetch' } })
+    await ctx.loader.await()
+    const entry = ctx.loader.resolve('fixture-web')
+    await entry.fiber.await()
     const web = ctx.web
     const originalConfig = Reflect.get(web, 'config')
     const volatile = typeof originalConfig?.searchProvider?.get === 'function'
@@ -55,28 +68,45 @@ export async function checkInstalledSearchRoute(importHost, CodexConnect) {
       assert.equal((await search()).content, 'Fallback')
     }
     if (volatile) {
-      const plugin = await ctx.plugin(CodexConnect, { enableSearch: true })
-      assert.equal((await search()).content, 'Synthetic Codex search')
-      // This fixture owns the Host reference. Use the published reference
-      // update protocol to model a validated settings change, without a GUI,
-      // persistent setting write or a WebRuntime restart.
-      const { createVolatile, updateVolatile } = await importHost('@deepseek-ai/cosmokit')
-      updateVolatile(originalConfig.searchProvider, createVolatile('fixture-newer'))
-      // Cordis creates a fresh service tracing proxy on every ctx.web read.
-      // Exercise the captured runtime directly across the live choice update.
-      assert.equal((await search()).content, 'Newer Host choice')
-      await plugin.dispose()
-      assert.equal(Reflect.get(web, 'config'), originalConfig)
-      assert.equal((await search()).content, 'Newer Host choice')
+      const hostFiber = entry.fiber
+      const change = async (value) => {
+        await entry.update({ config: { fetchProvider: 'fixture-fetch',
+          ...(value === undefined ? {} : { searchProvider: value }) } })
+        assert.ok(entry.fiber === hostFiber, 'A volatile Host choice must retain the same fiber')
+      }
+      for (const initial of ['fixture-fallback', undefined]) {
+        for (const readBetween of [true, false]) {
+          await change(initial)
+          const plugin = await ctx.plugin(CodexConnect, { enableSearch: true })
+          assert.equal((await search()).content, 'Synthetic Codex search')
+          const before = dispatches
+          await change('fixture-newer')
+          if (readBetween) assert.equal((await search()).content, 'Newer Host choice')
+          await change(initial)
+          const assertHostChoice = async () => {
+            if (initial === undefined) await assert.rejects(search(), { code: 'WEB_PROVIDER_AMBIGUOUS' })
+            else assert.equal((await search()).content, 'Fallback')
+          }
+          await assertHostChoice()
+          assert.equal(dispatches, before, 'Host round trips must never dispatch to Codex')
+          assert.equal((await web.fetch({ url: 'https://example.invalid/fetch' })).body.content, 'Unchanged fetch')
+          await plugin.dispose()
+          assert.ok(Reflect.get(web, 'config') === originalConfig)
+          await assertHostChoice()
+        }
+      }
     }
-    assert.equal(dispatches, volatile ? 3 : 2)
-    assert.equal(fallbackCalls, 3)
+    assert.equal(dispatches, volatile ? 6 : 2)
+    assert.equal(fallbackCalls, volatile ? 7 : 3)
     assert.equal(newerCalls, volatile ? 2 : 0)
     return { syntheticOnly: true, dispatches, reloadCycles: 2, sourceLimitVerified: true,
-      fetchRouteUnchanged: true, restorationVerified: true, volatileHostChoiceVerified: volatile }
+      fetchRouteUnchanged: true, restorationVerified: true, volatileHostChoiceVerified: volatile, hostRoundTripCases: volatile ? 4 : 0,
+      betweenSearchUpdatesVerified: volatile, unsetSelectionVerified: volatile }
   } finally {
     try { await ctx.fiber.dispose() } finally {
       globalThis.fetch = oldFetch
+      if (oldSearchEnv === undefined) delete process.env.DSH_WEB_SEARCH_PROVIDER
+      else process.env.DSH_WEB_SEARCH_PROVIDER = oldSearchEnv
       if (oldHome === undefined) delete process.env.DSH_HOME
       else process.env.DSH_HOME = oldHome
       await rm(root, { recursive: true, force: true })
