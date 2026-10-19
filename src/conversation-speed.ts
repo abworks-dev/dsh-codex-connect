@@ -61,6 +61,11 @@ export class ConversationSpeedRegistry extends FastModeRegistry {
   /** Login/logout/account commands invalidate paid choices, including an A/B/A round trip. */
   invalidateAccountSelections(): void { this.accountEpoch++; this.controls.clear() }
 
+  /** A committed Host model choice retires the old control, preserving legacy Fast. */
+  invalidateModelSelection(sessionId: unknown): void {
+    if (isFastModeSessionId(sessionId)) this.controls.delete(sessionId)
+  }
+
   workspaceFor(sessionId: unknown): string {
     const key = typeof sessionId === 'string' ? this.selectionKey?.(sessionId) : undefined
     const workspace = this.accountEpoch === 0 ? this.workspace : this.workspace + ':account-' + this.accountEpoch
@@ -153,22 +158,29 @@ export class ConversationSpeedRegistry extends FastModeRegistry {
 /** Read only the Host's existing selection revision, including an away/back change. */
 export function createConversationSpeedRegistry(ctx: Context): ConversationSpeedRegistry {
   const selections = new WeakMap<Session, { generation: string; revision: number }>()
+  const liveSession = (sessionId: string): Session | undefined => {
+    // Some supported Host declarations expose only the minimal ISessions surface.
+    const sessions = ctx.get('sessions') as Partial<SessionStore> | undefined
+    return sessions?.get?.(SessionId(sessionId))
+  }
   const entry = (session: Session) => {
     let value = selections.get(session)
     if (value === undefined) { value = { generation: randomUUID(), revision: 0 }; selections.set(session, value) }
     return value
   }
-  // Observe only metadata for future selections; no synchronous history scan or prompts.
-  ctx.on('session/event', (session, event) => {
-    if (event.type === 'model/selection') entry(session).revision++
-  }, { global: true })
-  return new ConversationSpeedRegistry(OPENAI_CODEX_FAST_MODE_MAX_SESSIONS, sessionId => {
-    // Some supported Host declarations expose only the minimal ISessions surface.
+  const registry = new ConversationSpeedRegistry(OPENAI_CODEX_FAST_MODE_MAX_SESSIONS, sessionId => {
     // Missing live lookup fails closed rather than enabling a paid choice.
-    const sessions = ctx.get('sessions') as Partial<SessionStore> | undefined
-    const session = sessions?.get?.(SessionId(sessionId))
+    const session = liveSession(sessionId)
     if (session === undefined) return undefined
     const selection = entry(session)
     return selection.generation + ':' + selection.revision
   })
+  // The committed Host lifecycle owns invalidation, never a view unmount.
+  // Bump the scope before retiring the control so captured old requests stay guarded.
+  ctx.on('session/event', (session, event) => {
+    if (event.type !== 'model/selection' || liveSession(session.id) !== session) return
+    entry(session).revision++
+    registry.invalidateModelSelection(session.id)
+  }, { global: true })
+  return registry
 }
