@@ -251,7 +251,7 @@ export function createOpenAICodexAdapter(
   preflightActivity?: OpenAICodexPreflightConfig,
 ): PiAiAdapter {
   const preflight = preflightActivity === undefined ? undefined : new OpenAICodexPreflightActivity(preflightActivity)
-  const baseline = withOpenAICodexModels(openaiCodexProvider())
+  const baseline = withOpenAICodexModels(openaiCodexProvider(), 'bundled-static')
   const provider = reservePermits === undefined ? baseline : withOpenAICodexReserve(baseline, reservePermits)
   let profiles: Map<string, ResolvedPiAiProviderProfile> | undefined
   let previousOverrides: Readonly<Record<string, number>> | undefined
