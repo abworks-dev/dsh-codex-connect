@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises'
+import { lstat, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { deflateSync } from 'node:zlib'
@@ -14,6 +14,7 @@ import ToolRuntime from '@deepseek-ai/dsh-tools'
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import { imageGenerateTool, IMAGE_GENERATE_TOOL_NAME } from '../src/image-tool.ts'
 import { OpenAICodexImageAssetStore } from '../src/image-assets.ts'
+import type { OpenAICodexOriginalImageRef } from '../src/image-assets-contract.ts'
 import { decodeImagePresentationMeta, decodeImageResultContent } from '../src/image-presentation.ts'
 import { sessionImageInventory } from '../src/image-history.ts'
 import type { ImageEditSources } from '../src/image-input-contract.ts'
@@ -93,6 +94,43 @@ function firstAsset(result: Awaited<ReturnType<typeof execute>>) {
 }
 
 describe('session-owned image edit tool', () => {
+  it.each(['original-save', 'preview-save'] as const)('removes real original files after cancellation during %s', async phase => {
+    const { ctx, assets, session } = await setup()
+    const controller = new AbortController()
+    const saveOriginals = assets.saveImages.bind(assets)
+    let original: OpenAICodexOriginalImageRef | undefined
+    vi.spyOn(assets, 'saveImages').mockImplementation(async (owner, inputs) => {
+      const refs = await saveOriginals(owner, inputs)
+      original = refs[0]
+      if (original === undefined) throw new Error('expected an actual saved original')
+      const directory = join(assets.root, original.assetId.slice(4, 6), original.assetId)
+      expect((await lstat(join(directory, 'original'))).isFile()).toBe(true)
+      expect((await assets.read(session.id, original.assetId))?.data).toEqual(PNG)
+      if (phase === 'original-save') controller.abort()
+      return refs
+    })
+    const previewSave = vi.spyOn(ctx.attachments, 'saveImages').mockImplementation(async () => {
+      controller.abort()
+      throw new Error('preview canceled after original persistence')
+    })
+    const result = await execute(ctx, session, { prompt: 'A disposable mug' }, controller.signal)
+    expect(result.isError).toBe(true)
+    expect(result.meta).toBeUndefined()
+    expect(decodeImageResultContent(result.content, 'A disposable mug')).toBeUndefined()
+    if (original === undefined) throw new Error('expected original persistence before cancellation')
+    const ref = original
+    const directory = join(assets.root, ref.assetId.slice(4, 6), ref.assetId)
+    // Host cancellation may settle the call before its execution body finishes cleanup.
+    await vi.waitFor(async () => {
+      await expect(lstat(join(directory, 'original'))).rejects.toMatchObject({ code: 'ENOENT' })
+      await expect(lstat(join(directory, 'metadata.json'))).rejects.toMatchObject({ code: 'ENOENT' })
+      await expect(lstat(directory)).rejects.toMatchObject({ code: 'ENOENT' })
+      await expect(assets.read(session.id, ref.assetId)).resolves.toBeUndefined()
+    })
+    expect(sessionImageInventory(session).originals.size).toBe(0)
+    expect(previewSave).toHaveBeenCalledTimes(phase === 'original-save' ? 0 : 1)
+  })
+
   it.each(['native', 'ptc'] as const)('continues editing recovered originals on a DeepSeek route (%s), refusing foreign sessions', async mode => {
     const { ctx, assets, session, editImages, generateImages } = await setup()
     const previewSave = vi.spyOn(ctx.attachments, 'saveImages').mockRejectedValueOnce(new Error('private preview failure'))

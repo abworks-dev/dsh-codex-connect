@@ -31,3 +31,13 @@ Only that failure becomes a successful original-only result, explicitly marked `
 This is source/isolated synthetic validation, not live OAuth/image-service acceptance, a visual browser acceptance run, an installed Desktop change, or a release. The image endpoint and credential logic are unchanged. No daily Harness window, session, configuration or service was used during implementation. No private custom-plugin code is included. Preview failure can leave host-owned preview objects without published references; this code does not delete shared Host attachments. Original-only recovery deliberately does not retry the image service or reconstruct a preview automatically.
 
 The branch is for independent review as a draft PR; do not merge, publish, install or deploy as part of this iteration.
+
+
+## Independent review follow-up
+
+Review of `b1e5986` found no blocking implementation defect and requested stronger boundary evidence. The follow-up changes tests only:
+
+- Cancellation during original save or preview save now uses the real temporary asset store, proves the original existed and was readable before cancellation, then asserts original bytes, metadata and the asset directory are physically gone and `read` returns unavailable.
+- Native/PTC v3 generation and edit results are exercised through real Session forks and the download route: lawful child/grandchild requests return exact original bytes; copied metadata outside the inherited prefix and inherited failed results return 404.
+- `pnpm exec vitest run tests/image-edit-tool.spec.ts tests/image-asset-routes.spec.ts`: 2 files / 57 tests passed. `pnpm run typecheck`: passed. No runtime, permissions or image behavior changed in this follow-up.
+- Initial PR CI at `b1e5986`, Node 24 job `117872345767`, passed 2056 tests, build and packaging, then failed resolving `@deepseek-ai/dsh-client-ui-open-in-app@0.1.7-rc.2` because npm registry returned HTTP 502. This is recorded separately from image assertions and the earlier writer-lock failure; it is not evidence that all PR checks passed. The new head's CI still requires completion.
