@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import type { ModelDirectoryState } from '@deepseek-ai/dsh-client-ui-model-selection/client'
 import type { SnapshotStore } from '@deepseek-ai/dsh-client-store'
@@ -7,6 +7,7 @@ import { OpenAICodexFastModeToggle } from '../src/client/OpenAICodexFastModeTogg
 import { en } from '../src/client/locales.ts'
 import type { OpenAICodexSettingsKey } from '../src/client/locales.ts'
 import type { AccountSnapshot } from '../src/client/account-store.ts'
+import { ConversationSpeedRegistry } from '../src/conversation-speed.ts'
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals() })
 const t = (key: OpenAICodexSettingsKey) => en[key]
@@ -18,19 +19,55 @@ function directory(model = 'gpt-6.1-sol', provider = 'openai-codex') {
   return { store, change: (next: string) => { current = { ...current, current: { provider, model: next } }; listeners.forEach(listener => { listener() }) } }
 }
 function backend() {
-  let generation = 0, mode = 'standard', revision = 0, model = ''
+  const registry = new ConversationSpeedRegistry()
+  let selectionRevision = 0, accountKey = 'acct_' + 'a'.repeat(43)
+  const scope = (model = 'gpt-6.1-sol') => ({ workspace: registry.workspaceFor('session') + ':selection-' + selectionRevision,
+    accountKey, provider: 'openai-codex', model })
   const fetch = vi.fn(async (path: string, init: RequestInit) => {
-    if (init.method === 'DELETE') return json({ invalidated: true })
-    if (init.method === 'GET') {
-      model = new URL(path, 'http://test').searchParams.get('model')!; generation++; mode = 'standard'; revision = 0
-    } else { const body = JSON.parse(String(init.body)); mode = body.mode; revision++ }
-    return json({ generation: 'generation-' + generation, mode, revision, model, modelSupported: true, eligibility: 'unknown', hasAccount: true, selectionAvailable: true })
+    const url = new URL(path, 'http://test'), session = url.searchParams.get('sessionId') ?? 'session'
+    if (url.pathname.endsWith('/fast-mode')) return json({ enabled: registry.isEnabled(session) })
+    if (init.method === 'GET') return json(registry.readSpeed(session, scope(url.searchParams.get('model')!)))
+    const body = JSON.parse(String(init.body))
+    if (init.method === 'DELETE') return json({ error: 'method not allowed' }, 405)
+    try { return json(registry.selectSpeed(body.sessionId, scope(body.model), body.generation, body.revision, body.mode)) }
+    catch { return json({ error: 'SPEED_SELECTION_STALE' }, 409) }
   })
   vi.stubGlobal('fetch', fetch)
-  return fetch
+  return Object.assign(fetch, { registry, scope, modelChanged: () => { selectionRevision++ },
+    accountChanged: () => { registry.invalidateAccountSelections(); accountKey = 'acct_' + 'b'.repeat(43) } })
 }
+it('keeps a newer choice in view B when older view A with the same generation unmounts', async () => {
+  const fetch = backend(), d = directory()
+  const props = { directory: d.store, sessionId: 'session', t }
+  const a = render(<OpenAICodexFastModeToggle {...props} />)
+  const b = render(<OpenAICodexFastModeToggle {...props} />)
+  const aView = within(a.container), bView = within(b.container)
+  await waitFor(() => { expect(aView.getByRole('button', { name: 'Standard' }).getAttribute('aria-pressed')).toBe('true') })
+  await waitFor(() => { expect(bView.getByRole('button', { name: 'Standard' }).getAttribute('aria-pressed')).toBe('true') })
+  const shared = fetch.registry.readSpeed('session', fetch.scope())
+  fireEvent.click(bView.getByRole('button', { name: 'Ultrafast' }))
+  await waitFor(() => { expect(bView.getByRole('button', { name: 'Ultrafast' }).getAttribute('aria-pressed')).toBe('true') })
+  expect(fetch.registry.readSpeed('session', fetch.scope())).toMatchObject({ generation: shared.generation, revision: shared.revision + 1, mode: 'ultrafast' })
+  await act(async () => { a.unmount() })
+  expect(fetch.registry.requestSpeed('session', fetch.scope())).toBe('ultrafast')
+  expect(bView.getByRole('button', { name: 'Ultrafast' }).getAttribute('aria-pressed')).toBe('true')
+  expect(fetch.mock.calls.filter(([, init]) => init.method === 'DELETE')).toHaveLength(0)
+})
+it('retains an explicit choice and its generation across navigation away and back', async () => {
+  const fetch = backend(), d = directory(), props = { directory: d.store, sessionId: 'session', t }
+  const initial = render(<OpenAICodexFastModeToggle {...props} />)
+  await waitFor(() => { expect(screen.getByRole('button', { name: 'Ultrafast' })).toHaveProperty('disabled', false) })
+  fireEvent.click(screen.getByRole('button', { name: 'Ultrafast' }))
+  await waitFor(() => { expect(screen.getByRole('button', { name: 'Ultrafast' }).getAttribute('aria-pressed')).toBe('true') })
+  const chosen = fetch.registry.readSpeed('session', fetch.scope())
+  await act(async () => { initial.unmount() })
+  render(<OpenAICodexFastModeToggle {...props} />)
+  await waitFor(() => { expect(screen.getByRole('button', { name: 'Ultrafast' })).toHaveProperty('disabled', false) })
+  expect(screen.getByRole('button', { name: 'Ultrafast' }).getAttribute('aria-pressed')).toBe('true')
+  expect(fetch.registry.readSpeed('session', fetch.scope())).toEqual(chosen)
+})
 it('blocks paid selection during shared account mutations and rereads after account replacement', async () => {
-  backend()
+  const fetch = backend()
   let state: AccountSnapshot = { status: { status: 'signed-in', usage: { rateLimits: [] } }, busy: false,
     accounts: [{ accountKey: 'synthetic-a', active: true, displayName: 'offline', profileSource: 'generated' }], operation: { kind: 'idle' } }
   const listeners = new Set<() => void>()
@@ -39,7 +76,7 @@ it('blocks paid selection during shared account mutations and rereads after acco
   await waitFor(() => { expect(screen.getByRole('button', { name: 'Ultrafast' })).toHaveProperty('disabled', false) })
   fireEvent.click(screen.getByRole('button', { name: 'Ultrafast' }))
   await waitFor(() => { expect(screen.getByRole('button', { name: 'Ultrafast' }).getAttribute('aria-pressed')).toBe('true') })
-  act(() => { state = { ...state, busy: true, operation: { kind: 'activating', accountKey: 'synthetic-b' } }; listeners.forEach(listener => { listener() }) })
+  act(() => { fetch.accountChanged(); state = { ...state, busy: true, operation: { kind: 'activating', accountKey: 'synthetic-b' } }; listeners.forEach(listener => { listener() }) })
   await waitFor(() => { expect(screen.getByRole('button', { name: 'Ultrafast' })).toHaveProperty('disabled', true) })
   act(() => { state = { ...state, busy: false, operation: { kind: 'idle' }, accounts: [{ ...state.accounts[0]!, accountKey: 'synthetic-b' }] }; listeners.forEach(listener => { listener() }) })
   await waitFor(() => { expect(screen.getByRole('button', { name: 'Standard' }).getAttribute('aria-pressed')).toBe('true') })
@@ -69,12 +106,12 @@ it('invalidates and reads a fresh Standard selection after switching away/back w
   await waitFor(() => { expect(screen.getByRole('button', { name: 'Ultrafast' })).toHaveProperty('disabled', false) })
   fireEvent.click(screen.getByRole('button', { name: 'Ultrafast' }))
   await waitFor(() => { expect(screen.getByRole('button', { name: 'Ultrafast' }).getAttribute('aria-pressed')).toBe('true') })
-  act(() => { d.change('gpt-6-astra') })
+  act(() => { fetch.modelChanged(); d.change('gpt-6-astra') })
   await waitFor(() => { expect(screen.getByRole('button', { name: 'Standard' }).getAttribute('aria-pressed')).toBe('true') })
-  act(() => { d.change('gpt-6.1-sol') })
+  act(() => { fetch.modelChanged(); d.change('gpt-6.1-sol') })
   await waitFor(() => { expect(screen.getByRole('button', { name: 'Standard' }).getAttribute('aria-pressed')).toBe('true') })
   expect(fetch.mock.calls.filter(([, init]) => init.method === 'POST')).toHaveLength(1)
-  expect(fetch.mock.calls.filter(([, init]) => init.method === 'DELETE')).toHaveLength(2)
+  expect(fetch.mock.calls.filter(([, init]) => init.method === 'DELETE')).toHaveLength(0)
 })
 it('recovers an uncertain POST by an explicit GET without replay or entitlement classification', async () => {
   const fetch = backend(), normal = fetch.getMockImplementation()!

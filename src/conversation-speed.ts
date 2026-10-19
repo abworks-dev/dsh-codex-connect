@@ -100,12 +100,6 @@ export class ConversationSpeedRegistry extends FastModeRegistry {
     return this.snapshot(control)
   }
 
-  /** Model-change invalidation can overtake a pending choice, but cannot clear a newer control. */
-  invalidateSpeed(sessionId: string, generation: string): void {
-    const control = this.controls.get(sessionId)
-    if (control?.generation === generation) this.controls.delete(sessionId)
-  }
-
   isUltrafastSelected(sessionId: unknown): boolean {
     return typeof sessionId === 'string' && this.controls.get(sessionId)?.mode === 'ultrafast'
   }

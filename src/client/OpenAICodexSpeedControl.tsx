@@ -11,7 +11,6 @@ export function OpenAICodexSpeedControl({ sessionId, model, t, available = true 
   const [status, setStatus] = useState<'loading' | 'ready' | 'unconfirmed'>('loading')
   const [readAttempt, setReadAttempt] = useState(0)
   const controller = useRef<AbortController | undefined>(undefined)
-  const latest = useRef<ConversationSpeedState | undefined>(undefined)
 
   useEffect(() => {
     const abort = new AbortController()
@@ -22,21 +21,15 @@ export function OpenAICodexSpeedControl({ sessionId, model, t, available = true 
     }).then(({ response, value }) => {
       if (abort.signal.aborted) return
       const next = response.ok ? readConversationSpeed(value, model) : undefined
-      latest.current = next; setSelection(next); setStatus(next === undefined ? 'unconfirmed' : 'ready')
+      setSelection(next); setStatus(next === undefined ? 'unconfirmed' : 'ready')
     }).catch(() => { if (!abort.signal.aborted) setStatus('unconfirmed') })
       .finally(() => { if (controller.current === abort) controller.current = undefined })
     return () => { abort.abort(); if (controller.current === abort) controller.current = undefined }
   }, [sessionId, model, readAttempt])
 
-  useEffect(() => () => {
-    controller.current?.abort()
-    // Generation-scoped invalidation cannot clear a newer tab/model choice.
-    const generation = latest.current?.generation
-    if (generation !== undefined) void requestJson(OPENAI_CODEX_SPEED_MODE_PATH, {
-      method: 'DELETE', credentials: 'same-origin', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ sessionId, generation }),
-    }).catch(() => undefined)
-  }, [sessionId, model])
+  // A view does not own the session choice. Navigation/unmount cancels only
+  // this view's request; Host model/account lifecycle governs invalidation.
+  useEffect(() => () => { controller.current?.abort() }, [])
 
   const select = (mode: OpenAICodexSpeedMode): void => {
     if (status !== 'ready' || selection === undefined || controller.current !== undefined) return
@@ -47,7 +40,7 @@ export function OpenAICodexSpeedControl({ sessionId, model, t, available = true 
     }).then(({ response, value }) => {
       if (abort.signal.aborted) return
       const next = response.ok ? readConversationSpeed(value, model) : undefined
-      if (next !== undefined && next.mode === mode) { latest.current = next; setSelection(next); setStatus('ready') }
+      if (next !== undefined && next.mode === mode) { setSelection(next); setStatus('ready') }
       else setStatus('unconfirmed')
     }).catch(() => { if (!abort.signal.aborted) setStatus('unconfirmed') })
       .finally(() => { if (controller.current === abort) controller.current = undefined })

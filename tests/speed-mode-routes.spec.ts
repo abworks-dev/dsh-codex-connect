@@ -29,7 +29,7 @@ function fixture(admission: TestHttpAdmission = 'allow') {
 }
 it.each(rejectedHttpAdmissions)('rejects $admission before account/state/body access', async ({ admission, status }) => {
   const f = fixture(admission)
-  for (const method of ['GET', 'POST', 'DELETE']) expect((await f.call(method, {})).status).toBe(status)
+  for (const method of ['GET', 'POST']) expect((await f.call(method, {})).status).toBe(status)
   expect(f.accounts).not.toHaveBeenCalled()
 })
 it('rejects an untrusted origin before reading account state', async () => {
@@ -47,13 +47,14 @@ it('keeps all modes exclusive, rejects stale POST replay, and preserves the lega
   expect((await f.call('POST', { sessionId: 'session', enabled: true }, OPENAI_CODEX_FAST_MODE_PATH)).status).toBe(200)
   expect((await f.call()).result['mode']).toBe('fast')
 })
-it('does not reuse an account scope or let an old DELETE clear a newer account choice', async () => {
+it('does not reuse an account scope or let an old POST clear a newer account choice', async () => {
   const f = fixture(), old = (await f.call()).result
   f.setAccount('acct_' + 'b'.repeat(43))
   const next = (await f.call()).result
   const chosen = await f.call('POST', { sessionId: 'session', model: 'gpt-6.1-sol', generation: next['generation'], revision: next['revision'], mode: 'ultrafast' })
   expect(chosen.status).toBe(200)
-  expect((await f.call('DELETE', { sessionId: 'session', generation: old['generation'] })).status).toBe(200)
+  expect((await f.call('POST', { sessionId: 'session', model: 'gpt-6.1-sol', generation: old['generation'], revision: old['revision'], mode: 'standard' })).status).toBe(409)
+  expect((await f.call('DELETE', { sessionId: 'session', generation: old['generation'] })).status).toBe(405)
   expect((await f.call()).result['mode']).toBe('ultrafast')
 })
 it('requires an account and exact supported model without classifying eligibility', async () => {

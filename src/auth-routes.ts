@@ -788,7 +788,7 @@ export function registerOpenAICodexAuthRoutes(
       kind: 'exact',
       path: OPENAI_CODEX_SPEED_MODE_PATH,
       handler: async (req, res) => {
-        if (req.method !== 'GET' && req.method !== 'POST' && req.method !== 'DELETE') return json(res, 405, { error: 'method not allowed' })
+        if (req.method !== 'GET' && req.method !== 'POST') return json(res, 405, { error: 'method not allowed' })
         if (!await authorize(req, res)) return
         if (!(fastMode instanceof ConversationSpeedRegistry)) return json(res, 503, { error: 'speed selection unavailable' })
         const scoped = async (sessionId: string, model: string) => ({
@@ -811,11 +811,6 @@ export function registerOpenAICodexAuthRoutes(
           const body = raw as Record<string, unknown>
           const sessionId = body['sessionId'], generation = body['generation']
           if (!isFastModeSessionId(sessionId) || !generationId(generation)) return json(res, 400, { error: 'invalid input' })
-          if (req.method === 'DELETE') {
-            if (Object.keys(body).sort().join(',') !== 'generation,sessionId') return json(res, 400, { error: 'invalid input' })
-            fastMode.invalidateSpeed(sessionId, generation)
-            return json(res, 200, { invalidated: true })
-          }
           const mode = body['mode'], model = body['model'], revision = body['revision']
           if (Object.keys(body).sort().join(',') !== 'generation,mode,model,revision,sessionId'
             || !modelId(model) || !isOpenAICodexSpeedMode(mode) || !Number.isSafeInteger(revision) || Number(revision) < 0) {

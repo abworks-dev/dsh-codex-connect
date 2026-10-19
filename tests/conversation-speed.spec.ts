@@ -78,7 +78,7 @@ it('lets legacy Fast/Standard commands invalidate every previous Ultrafast choic
 it.each(['choice-first', 'invalidation-first'])('prevents a pending old-model Ultrafast choice from reactivating after %s', order => {
   const registry = new ConversationSpeedRegistry(), old = registry.readSpeed('session', scope)
   if (order === 'choice-first') registry.selectSpeed('session', scope, old.generation, old.revision, 'ultrafast')
-  registry.invalidateSpeed('session', old.generation)
+  registry.readSpeed('session', { ...scope, workspace: 'changed-workspace' })
   if (order === 'invalidation-first') {
     expect(() => registry.selectSpeed('session', scope, old.generation, old.revision, 'ultrafast')).toThrow('SPEED_SELECTION_STALE')
   }
@@ -86,11 +86,11 @@ it.each(['choice-first', 'invalidation-first'])('prevents a pending old-model Ul
   expect(next.generation).not.toBe(old.generation)
   expect(next.mode).toBe('standard')
 })
-it('does not let an old-model invalidation clear a newer explicit choice', () => {
+it('does not let an old-model mutation clear a newer explicit choice', () => {
   const registry = new ConversationSpeedRegistry(), old = choose(registry, 'ultrafast')
   const nextScope = { ...scope, model: 'gpt-6-astra' }
   choose(registry, 'ultrafast', nextScope)
-  registry.invalidateSpeed('session', old.generation)
+  expect(() => registry.selectSpeed('session', scope, old.generation, old.revision, 'standard')).toThrow('SPEED_SELECTION_STALE')
   expect(registry.requestSpeed('session', nextScope)).toBe('ultrafast')
 })
 it.each([{ accountKey: 'acct_' + 'b'.repeat(43) }, { workspace: 'other-workspace' }, { model: 'gpt-6-astra' }])('refuses a request after a bound scope changes instead of silently changing tier', patch => {
@@ -103,7 +103,7 @@ it.each([{ accountKey: 'acct_' + 'b'.repeat(43) }, { workspace: 'other-workspace
 it('preserves an explicitly enabled legacy Fast choice through a model change', () => {
   const registry = new ConversationSpeedRegistry(); registry.set('session', true)
   const previous = registry.readSpeed('session', scope)
-  registry.invalidateSpeed('session', previous.generation)
+  expect(previous.mode).toBe('fast')
   expect(registry.readSpeed('session', { ...scope, model: 'gpt-5.6-sol' }).mode).toBe('fast')
 })
 it('requires a signed-in scope and an exact supported model for Ultrafast', () => {
