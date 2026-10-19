@@ -1,6 +1,6 @@
 /** Per-conversation OpenAI Codex Fast Mode control for the Composer row. */
 
-import { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore } from 'react'
 import type { SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { ModelDirectoryState } from '@deepseek-ai/dsh-client-ui-model-selection/client'
 import { OPENAI_CODEX_FAST_MODE_PATH } from '../fast-mode-paths.ts'
@@ -256,8 +256,9 @@ export function OpenAICodexFastModeToggle(props: OpenAICodexFastModeToggleInject
 }
 
 function AccountScopedSpeedControl(props: OpenAICodexFastModeToggleInjected & { sessionId: string; model: string; t: Translate }) {
-  const account = useSyncExternalStore(listener => props.account?.subscribe(listener) ?? (() => undefined),
-    () => props.account?.getSnapshot(), () => props.account?.getSnapshot())
+  const subscribe = useCallback((listener: () => void) => props.account?.subscribe(listener) ?? (() => undefined), [props.account])
+  const snapshot = useCallback(() => props.account?.getSnapshot(), [props.account])
+  const account = useSyncExternalStore(subscribe, snapshot, snapshot)
   const identity = account === undefined ? '' : [account.accounts.find(row => row.active)?.accountKey ?? '',
     account.status.status, account.operation.kind, account.authorizationRevision ?? 0].join(':')
   const available = account === undefined || (!account.busy && account.status.status === 'signed-in')

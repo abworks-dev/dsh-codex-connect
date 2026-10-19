@@ -31,7 +31,8 @@ function backend() {
 }
 it('blocks paid selection during shared account mutations and rereads after account replacement', async () => {
   backend()
-  let state = { status: { status: 'signed-in', usage: {} }, busy: false, accounts: [{ accountKey: 'synthetic-a', active: true }], operation: { kind: 'idle' } } as AccountSnapshot
+  let state: AccountSnapshot = { status: { status: 'signed-in', usage: { rateLimits: [] } }, busy: false,
+    accounts: [{ accountKey: 'synthetic-a', active: true, displayName: 'offline', profileSource: 'generated' }], operation: { kind: 'idle' } }
   const listeners = new Set<() => void>()
   const account = { getSnapshot: () => state, subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener) } } }
   render(<OpenAICodexFastModeToggle directory={directory().store} account={account} sessionId="session" t={t} />)

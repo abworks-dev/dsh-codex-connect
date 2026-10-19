@@ -2,9 +2,25 @@ import { expect, it } from 'vitest'
 import { ConversationSpeedRegistry, createConversationSpeedRegistry } from '../src/conversation-speed.ts'
 import { httpRouteTestContext } from './http-route-test-context.ts'
 import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
+import Sessions, { SessionId } from '@deepseek-ai/dsh-session'
 import type { ConversationSpeedScope } from '../src/conversation-speed.ts'
 
 const scope: ConversationSpeedScope = { workspace: 'fixture-workspace', accountKey: 'acct_' + 'a'.repeat(43), provider: 'openai-codex', model: 'gpt-6.1-sol' }
+it('observes the real Host live SessionStore append feed without reading session history', async () => {
+  const { ctx } = httpRouteTestContext()
+  await ctx.plugin(Sessions)
+  const sessions = ctx.get('sessions') as unknown as Sessions
+  const session = sessions.create(SessionId('native-speed'))
+  const registry = createConversationSpeedRegistry(ctx)
+  const before = { ...scope, workspace: registry.workspaceFor(session.id) }
+  choose(registry, 'ultrafast', before, session.id)
+  session.append('model/selection', { provider: 'openai-codex', model: 'gpt-6-astra' })
+  session.append('model/selection', { provider: 'openai-codex', model: 'gpt-6.1-sol' })
+  const after = { ...scope, workspace: registry.workspaceFor(session.id) }
+  expect(after.workspace).not.toBe(before.workspace)
+  expect(() => registry.requestSpeed(session.id, after)).toThrow('ULTRAFAST_SELECTION_EXPIRED')
+  expect(registry.readSpeed(session.id, after).mode).toBe('standard')
+})
 it('invalidates a paid login/account A/B/A choice and pending mutation without changing legacy Fast preferences', () => {
   const registry = new ConversationSpeedRegistry(), before = { ...scope, workspace: registry.workspaceFor('session') }
   const old = choose(registry, 'ultrafast', before), captured = registry.captureSpeed('session')
