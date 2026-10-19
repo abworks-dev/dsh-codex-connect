@@ -60,8 +60,8 @@ export function OpenAICodexSpeedControl({ sessionId, model, t, available = true 
         aria-busy={status === 'loading'} disabled={status !== 'ready' || (mode === 'ultrafast' && !canUltra)}
         title={mode === 'ultrafast' ? t(canUltra ? 'ultrafastDisclosure' : 'ultrafastUnavailable') : undefined}
         onClick={() => { select(mode) }}
-        style={{ borderRadius: 6, padding: '3px 6px', border: '1px solid var(--dsw-alias-border, #777)',
-          background: selection?.mode === mode ? 'var(--dsw-alias-background-secondary)' : 'transparent', color: 'inherit', fontSize: 12 }}>
+        style={{ borderRadius: 6, padding: '3px 6px', border: selection?.mode === mode ? '1px solid #f97316' : '1px solid var(--dsw-alias-border, #777)',
+          background: selection?.mode === mode ? 'var(--dsw-alias-background-secondary, rgba(249,115,22,0.18))' : 'transparent', color: 'inherit', fontSize: 12 }}>
         {mode === 'standard' ? t('speedStandard') : mode === 'fast' ? t('speedFast') : 'Ultrafast'}
       </button>)}
     {status === 'loading' && <span role="status">{t('speedLoading')}</span>}
