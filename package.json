@@ -2,7 +2,7 @@
   "name": "dsh-codex-connect",
   "displayName": "Codex Connect",
   "description": "ChatGPT OAuth and Codex models for DeepSeek Harness.",
-  "version": "0.2.0-alpha.6",
+  "version": "0.2.0-alpha.9",
   "author": "Frank Song",
   "contributors": [
     "Yan-Zero (original dsh-codex author)"
@@ -48,7 +48,7 @@
     "check:compatibility": "node scripts/check-compatibility.mjs",
     "check:capability-cli": "node scripts/check-capability-cli.mjs",
     "check:canary-workflow": "node scripts/check-canary-workflow.mjs && node scripts/check-dsh-next-contract.mjs",
-    "pack:check": "node scripts/check-pack-inventory.test.mjs && node scripts/check-pack.mjs",
+    "pack:check": "node scripts/check-pack-command.test.mjs && node scripts/check-pack-inventory.test.mjs && node scripts/check-pack.mjs",
     "check:dsh-install": "node scripts/check-dsh-install.mjs",
     "check:dsh-matrix": "node scripts/check-dsh-matrix.mjs",
     "check:dsh-next": "node scripts/check-dsh-next.mjs",

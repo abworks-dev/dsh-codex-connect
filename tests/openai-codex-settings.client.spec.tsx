@@ -96,7 +96,7 @@ function settingsScopeFixture(
     const next = { ...snapshot.value! }
     for (const op of ops) {
       if (op.path.length !== 1) throw new Error('fixture requires top-level fields')
-      Object.assign(next, { [op.path[0]!]: op.op === 'set' ? op.value : undefined })
+      Object.assign(next, { [op.path[0]!]: op.op === 'set' ? ['reasoningEffort', 'newSessionSpeedMode', 'newSubagentSpeedMode'].includes(String(op.path[0])) && op.value === null ? undefined : op.value : undefined })
     }
     snapshot = { ...snapshot, value: next, revision: (snapshot.revision ?? 0) + 1 }
     for (const listener of listeners) listener()
@@ -469,6 +469,45 @@ describe('OpenAI Codex Plugin configuration card', () => {
     expect(mutate).toHaveBeenCalledTimes(1)
   })
 
+  it('saves separate explicit speed defaults and resets to the preserved legacy preference', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => json(modelCatalogFixture([{ id: 'gpt-6.1-sol', name: 'GPT Sol' }]))))
+    const { scope, mutate } = settingsScopeFixture(true, { ...DEFAULT_OPENAI_CODEX_SETTINGS, enableNewSessionFastMode: true })
+    render(<OpenAICodexConfiguration scope={scope} t={t} activeModule="capabilities" />)
+    const top = await screen.findByRole('combobox', { name: en.newSessionSpeedMode })
+    const child = screen.getByRole('combobox', { name: en.newSubagentSpeedMode })
+    fireEvent.change(top, { target: { value: 'ultrafast' } })
+    fireEvent.change(child, { target: { value: 'standard' } })
+    expect((screen.getByRole('checkbox', { name: /Fast Mode for new conversations/u }) as HTMLInputElement).disabled).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: en.save }))
+    expect(await screen.findByText(en.settingsSaved)).toBeTruthy()
+    expect(mutate).toHaveBeenLastCalledWith([
+      { op: 'set', path: ['newSessionSpeedMode'], value: 'ultrafast' },
+      { op: 'set', path: ['newSubagentSpeedMode'], value: 'standard' },
+    ], 0)
+    fireEvent.change(top, { target: { value: '' } })
+    fireEvent.click(screen.getByRole('button', { name: en.save }))
+    await waitFor(() => { expect(mutate).toHaveBeenLastCalledWith([{ op: 'set', path: ['newSessionSpeedMode'], value: null }], 1) })
+    expect(await screen.findByText(en.settingsSaved)).toBeTruthy()
+    expect(scope.getSnapshot().value).toMatchObject({ newSessionSpeedMode: undefined, newSubagentSpeedMode: 'standard', enableNewSessionFastMode: true })
+    expect((screen.getByRole('checkbox', { name: /Fast Mode for new conversations/u }) as HTMLInputElement).disabled).toBe(false)
+  })
+
+  it('saves a reasoning fallback and resets it with a null mask through the Host revision queue', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => json(modelCatalogFixture([{ id: 'gpt-6.1-sol', name: 'GPT Sol' }]))))
+    const { scope, mutate } = settingsScopeFixture()
+    render(<OpenAICodexConfiguration scope={scope} t={t} activeModule="capabilities" />)
+    const select = await screen.findByRole('combobox', { name: /Default reasoning effort/u })
+    fireEvent.change(select, { target: { value: 'max' } })
+    fireEvent.click(screen.getByRole('button', { name: en.save }))
+    expect(await screen.findByText(en.settingsSaved)).toBeTruthy()
+    expect(mutate).toHaveBeenLastCalledWith([{ op: 'set', path: ['reasoningEffort'], value: 'max' }], 0)
+    fireEvent.change(select, { target: { value: '' } })
+    fireEvent.click(screen.getByRole('button', { name: en.save }))
+    await waitFor(() => { expect(mutate).toHaveBeenLastCalledWith([{ op: 'set', path: ['reasoningEffort'], value: null }], 1) })
+    expect(await screen.findByText(en.settingsSaved)).toBeTruthy()
+    expect(scope.getSnapshot().value?.reasoningEffort).toBeUndefined()
+  })
+
   it('saves independent, default-off Fast Mode choices for new top-level and subagent sessions', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => json(modelCatalogFixture([{ id: 'gpt-5.6-sol', name: 'GPT-5.6 Sol' }]))))
     const { scope, mutate } = settingsScopeFixture()
@@ -604,9 +643,11 @@ describe('OpenAI Codex Plugin configuration card', () => {
     expect(enableImageGeneration.checked).toBe(false)
     expect(imageModelHint.placeholder).toContain('gpt-image-2')
     expect(enableAutoReview.checked).toBe(false)
-    expect(en.enableImageGenerationHelp).toBe('Generate or edit conversation images with GPT Image. When enabled, Codex requests include stable handles for conversation images so the model can select them; editing sends only the selected target and reference images to the image service.')
+    expect(en.enableImageGenerationHelp).toContain('keeping your current chat model, including DeepSeek')
+    expect(en.enableImageGenerationHelp).toContain('only the selected target and reference images')
     expect(zh.enableImageGeneration).toBe('启用 GPT Image 图片生成')
-    expect(zh.enableImageGenerationHelp).toBe('在对话中生成或编辑图片。启用后，Codex 请求会为对话图片附加稳定句柄，帮助模型准确选图；编辑时，仅将本次选定的主图和参考图发送给图片服务。')
+    expect(zh.enableImageGenerationHelp).toContain('保持当前聊天模型（包括 DeepSeek）')
+    expect(zh.enableImageGenerationHelp).toContain('仅将本次选定的主图和参考图')
     expect(screen.getByText(en.autoReviewOfficialBadge)).toBeTruthy()
     expect(screen.getByText(en.enableAutoReviewHelp)).toBeTruthy()
     expect(en.autoReviewDisclosure).toContain('to chatgpt.com')
