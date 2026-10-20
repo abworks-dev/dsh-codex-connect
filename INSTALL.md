@@ -175,10 +175,10 @@ Alpha 4.33 omits the `modelErrors` profile field required by RC model packages, 
    dsh plugin --profile web add dsh-codex-connect@0.1.0-alpha.4.41
    ```
 
-   For exact DSH `0.1.7-rc.1`, `0.1.7-rc.2`, `0.2.0-rc.1`, `0.2.0-rc.2`, `0.2.1-alpha.1`, `0.2.1-alpha.2`, `0.2.1-alpha.3`, `0.2.1-alpha.4`, `0.2.1-alpha.5`, `0.2.1-rc.1` or `0.2.1-rc.2`, use `0.2.0-alpha.8`:
+   For exact DSH `0.1.7-rc.1`, `0.1.7-rc.2`, `0.2.0-rc.1`, `0.2.0-rc.2`, `0.2.1-alpha.1`, `0.2.1-alpha.2`, `0.2.1-alpha.3`, `0.2.1-alpha.4`, `0.2.1-alpha.5`, `0.2.1-rc.1` or `0.2.1-rc.2`, use `0.2.0-alpha.9`:
 
    ```sh
-   dsh plugin --profile web add dsh-codex-connect@0.2.0-alpha.8
+   dsh plugin --profile web add dsh-codex-connect@0.2.0-alpha.9
    ```
 
    For DSH `0.1.2-alpha.5`, use Alpha 4.25:
@@ -189,7 +189,7 @@ Alpha 4.33 omits the `modelErrors` profile field required by RC model packages, 
 
    If npm is unavailable after the matching GitHub prerelease is created, use `dsh plugin --profile web add 'github:franksong2702/dsh-codex-connect#v0.1.0-alpha.4.21'` only for the DSH `0.1.1-rc.2` combination, `dsh plugin --profile web add 'github:franksong2702/dsh-codex-connect#v0.1.0-alpha.4.23'` only for the DSH `0.1.2-alpha.2` combination, `dsh plugin --profile web add 'github:franksong2702/dsh-codex-connect#v0.1.0-alpha.4.25'` only for the DSH `0.1.2-alpha.5` combination, `dsh plugin --profile web add 'github:franksong2702/dsh-codex-connect#v0.1.0-alpha.4.41'` only for the DSH `0.1.2-rc.1`, `0.1.5-alpha.1`, `0.1.5-rc.1`, and `0.1.5-rc.2` combinations, or `dsh plugin --profile web add 'github:franksong2702/dsh-codex-connect#v0.1.0-alpha.4.46'` only for DSH `0.1.7-rc.1`.
 
-   For current DSH `0.1.7-rc.1`, `0.1.7-rc.2`, `0.2.0-rc.1`, `0.2.0-rc.2`, `0.2.1-alpha.1`, `0.2.1-alpha.2`, `0.2.1-alpha.3`, `0.2.1-alpha.4`, `0.2.1-alpha.5`, `0.2.1-rc.1` or `0.2.1-rc.2`, if npm is unavailable after the matching GitHub prerelease is created, use `dsh plugin --profile web add 'github:franksong2702/dsh-codex-connect#v0.2.0-alpha.8'`.
+   For current DSH `0.1.7-rc.1`, `0.1.7-rc.2`, `0.2.0-rc.1`, `0.2.0-rc.2`, `0.2.1-alpha.1`, `0.2.1-alpha.2`, `0.2.1-alpha.3`, `0.2.1-alpha.4`, `0.2.1-alpha.5`, `0.2.1-rc.1` or `0.2.1-rc.2`, if npm is unavailable after the matching GitHub prerelease is created, use `dsh plugin --profile web add 'github:franksong2702/dsh-codex-connect#v0.2.0-alpha.9'`.
 
 3. Run `dsh web --help` once to compose the installed profile without starting the server. DSH `0.1.2-rc.1` prepares profile plugin dependency fallback during this step.
 4. Run `dsh --profile web --dump-config` and require exactly one `llm-openai-codex` row loading `dsh-codex-connect`.
@@ -217,7 +217,7 @@ Install the exact published version using Desktop's own **Plugins** page or its 
 
 ```sh
 "/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh" --version
-"/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh" plugin --profile desktop add dsh-codex-connect@0.2.0-alpha.8
+"/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh" plugin --profile desktop add dsh-codex-connect@0.2.0-alpha.9
 ```
 
 Start Desktop once to initialize its profile and fully quit it before CLI package operations. Use the intended `DSH_HOME`; do not inherit an unrelated Web instance's home. Preserve profile patches, default models, optional capabilities and OAuth state. Reopen Desktop after installing. Its Plugins page can enable an installed but inactive bundle; a dependency entry alone is not proof of activation.
