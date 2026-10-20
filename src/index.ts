@@ -29,6 +29,8 @@ import { OPENAI_CODEX_AUTHORIZATION_TIMEOUT_MS, registerOpenAICodexAuthRoutes } 
 import { registerOpenAICodexProxyRoutes } from './proxy-routes.ts'
 import { OPENAI_CODEX_TRUSTED_ORIGINS_FILENAME, OpenAICodexTrustedOriginsStore } from './trusted-origins.ts'
 import { registerOpenAICodexUpdateRoutes } from './update-routes.ts'
+import { parseOpenAICodexSpeedDefault } from './speed-mode-contract.ts'
+import type { OpenAICodexSpeedMode } from './speed-mode-contract.ts'
 import { registerOpenAICodexModelCatalogRoute } from './model-routes.ts'
 import { registerOpenAICodexOriginalImageRoute } from './image-asset-routes.ts'
 import {
@@ -252,6 +254,9 @@ export const OPENAI_CODEX_SETTINGS_NS = OPENAI_CODEX_SETTINGS_NAMESPACE
 
 /** Plain configuration accepted by direct Cordis composition and unit tests. */
 export interface Config {
+  /** Explicit new-session preferences; omitted/null retains the corresponding legacy Fast default. */
+  newSessionSpeedMode?: OpenAICodexSpeedMode | null | undefined
+  newSubagentSpeedMode?: OpenAICodexSpeedMode | null | undefined
   /** Optional Host model-request retry policy; omission preserves defaults. Reload to change. */
   retryPolicy?: RetryPolicyConfig | undefined
   /** Opt-in absolute owner-only directory for local request evidence; never uploads telemetry. Restart to change. */
@@ -324,6 +329,8 @@ function parseSettingsContextWindowOverrides(
 }
 
 const configSchema = z.object({
+  newSessionSpeedMode: z.transform(z.union([z.const(undefined), z.const(null), z.string()]), parseOpenAICodexSpeedDefault).volatile(),
+  newSubagentSpeedMode: z.transform(z.union([z.const(undefined), z.const(null), z.string()]), parseOpenAICodexSpeedDefault).volatile(),
   retryPolicy: z.transform(z.union([z.const(undefined), RetryPolicySchema]), value => {
     resolveRetryPolicy(value, 'dsh-codex-connect retryPolicy')
     return value
@@ -360,6 +367,8 @@ const configSchema = z.object({
 
 /** Runtime configuration exposes each editable field through Cordis's public Volatile type. */
 export interface VolatileConfig {
+  newSessionSpeedMode: Volatile<OpenAICodexSpeedMode | null | undefined>
+  newSubagentSpeedMode: Volatile<OpenAICodexSpeedMode | null | undefined>
   retryPolicy?: RetryPolicyConfig | undefined
   requestMetricsDirectory?: string | undefined
   requestMetricsMaxBytes: number
@@ -398,6 +407,7 @@ export const Config: z<Config, VolatileConfig> = configSchema
 export function apply(ctx: Context, config: Config | VolatileConfig): void {
   const catalog = openAICodexModelCatalog()
   const current = (): OpenAICodexSettingsInput => Object.fromEntries(Object.entries({
+    newSessionSpeedMode: configValue(config.newSessionSpeedMode), newSubagentSpeedMode: configValue(config.newSubagentSpeedMode),
     models: configValue(config.models), enableProxy: configValue(config.enableProxy), proxyUrl: configValue(config.proxyUrl),
     contextWindowOverrides: configValue(config.contextWindowOverrides), enableSearch: configValue(config.enableSearch),
     enableReserveFallback: configValue(config.enableReserveFallback), enableNativeCompaction: configValue(config.enableNativeCompaction),
@@ -429,7 +439,8 @@ export function apply(ctx: Context, config: Config | VolatileConfig): void {
     join(dirname(credentials.filename), OPENAI_CODEX_TRUSTED_ORIGINS_FILENAME),
   )
   const fastMode = createConversationSpeedRegistry(ctx)
-  registerOpenAICodexFastModeDefaults(ctx, fastMode, () => resolveOpenAICodexSettings(current()))
+  registerOpenAICodexFastModeDefaults(ctx, fastMode, () => resolveOpenAICodexSettings(current()),
+    async () => (await credentials.accounts()).find(account => account.active)?.accountKey)
   const taskDirectory = join(dirname(credentials.filename), 'codex-connect-tasks')
   taskRuntime = new AdaptiveTaskControlRuntime(ctx, {
     directory: taskDirectory,

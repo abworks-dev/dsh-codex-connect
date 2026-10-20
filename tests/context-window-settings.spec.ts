@@ -34,6 +34,15 @@ afterEach(async () => {
 })
 
 describe('context windows through the real Host settings and LLM registry', () => {
+  it('preserves independent speed defaults and null masks through the real Host settings layers', async () => {
+    const runtime = await boot({ newSessionSpeedMode: 'ultrafast', enableNewSessionFastMode: true })
+    const settings = () => plugin.decodeOpenAICodexSettings(runtime.settings.describe().find(entry => entry.ns === ns)?.value)
+    expect(settings()).toMatchObject({ newSessionSpeedMode: 'ultrafast', newSubagentSpeedMode: undefined })
+    await runtime.settings.mutate(ns, [{ op: 'set', path: ['newSubagentSpeedMode'], value: 'fast' }])
+    await runtime.settings.mutate(ns, [{ op: 'set', path: ['newSessionSpeedMode'], value: null }])
+    expect(settings()).toMatchObject({ newSessionSpeedMode: undefined, newSubagentSpeedMode: 'fast', enableNewSessionFastMode: true })
+  })
+
   it('uses the calibrated Sol61 default and lets a user override or reset it independently', async () => {
     const runtime = await boot()
     const sol61 = 'gpt-6.1-sol'
