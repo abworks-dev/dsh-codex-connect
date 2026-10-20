@@ -4,6 +4,7 @@ import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore }
 import type { CSSProperties } from 'react'
 import type { ConfigForm } from '@deepseek-ai/dsh-client-ui-settings/client'
 import { parseOpenAICodexSpeedDefault } from '../speed-mode-contract.ts'
+import { OPENAI_CODEX_REASONING_EFFORTS, parseOpenAICodexReasoningEffort } from '../reasoning-contract.ts'
 import type { OpenAICodexSettingsConfig } from '../settings-contract.ts'
 import {
   isValidOpenAICodexContextWindowOverrides,
@@ -104,6 +105,7 @@ const CONFIG_FIELDS = [
   'models',
   'newSessionSpeedMode',
   'newSubagentSpeedMode',
+  'reasoningEffort',
   'contextWindowOverrides',
   'enableProxy',
   'enableReserveFallback',
@@ -482,7 +484,7 @@ export function OpenAICodexConfiguration({ scope, t, activeModule, panelIdPrefix
         // Null masks prevent a reset row from silently re-inheriting a composition override.
         const value = field === 'contextWindowOverrides'
           ? { ...Object.fromEntries((modelCatalog ?? []).map(model => [model.id, null])), ...desired.contextWindowOverrides }
-          : field === 'newSessionSpeedMode' || field === 'newSubagentSpeedMode' ? desired[field] ?? null : desired[field]
+          : field === 'reasoningEffort' || field === 'newSessionSpeedMode' || field === 'newSubagentSpeedMode' ? desired[field] ?? null : desired[field]
         return value === undefined ? { op: 'unset', path: [field] } : { op: 'set', path: [field], value }
       })
       if (ops.length > 0 && !await scope.mutate(ops, current.revision)) throw new Error('Host refused the configuration change')
@@ -835,6 +837,15 @@ export function OpenAICodexConfiguration({ scope, t, activeModule, panelIdPrefix
               />
             </label>
           </div>
+          <label style={formFieldStyle}>
+            <span style={labelStyle}>{t('reasoningEffort')}</span>
+            <select style={controlStyle} value={draft.reasoningEffort ?? ''}
+              onChange={event => { update('reasoningEffort', parseOpenAICodexReasoningEffort(event.currentTarget.value || undefined) ?? undefined) }}>
+              <option value="">{t('reasoningProviderDefault')}</option>
+              {OPENAI_CODEX_REASONING_EFFORTS.map(effort => <option key={effort} value={effort}>{effort}</option>)}
+            </select>
+            <span style={bodyStyle}>{t('reasoningEffortHelp')}</span>
+          </label>
           <label style={toggleRowStyle}>
             <input
               type="checkbox"
