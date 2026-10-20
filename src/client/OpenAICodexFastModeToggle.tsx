@@ -1,10 +1,14 @@
 /** Per-conversation OpenAI Codex Fast Mode control for the Composer row. */
 
-import { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore } from 'react'
 import type { SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { ModelDirectoryState } from '@deepseek-ai/dsh-client-ui-model-selection/client'
 import { OPENAI_CODEX_FAST_MODE_PATH } from '../fast-mode-paths.ts'
 import type { OpenAICodexSettingsKey } from './locales.ts'
+import { requestJson } from './request-json.ts'
+import { supportsOpenAICodexUltrafast } from '../speed-mode-contract.ts'
+import { OpenAICodexSpeedControl } from './OpenAICodexSpeedControl.tsx'
+import type { OpenAICodexAccountStore } from './account-store.ts'
 
 const CODEX_PROVIDER = 'openai-codex'
 const FAST_MODE_ACTIVE_COLOR = '#f97316'
@@ -14,10 +18,11 @@ type Translate = (key: OpenAICodexSettingsKey, params?: Record<string, unknown>)
 export interface OpenAICodexFastModeToggleInjected {
   /** Session-scoped model directory shared with the model selector and quota. */
   readonly directory: SnapshotStore<ModelDirectoryState>
+  readonly account?: Pick<OpenAICodexAccountStore, 'subscribe' | 'getSnapshot'>
 }
 
 interface FastModeState {
-  readonly status: 'loading' | 'ready' | 'error'
+  readonly status: 'loading' | 'ready' | 'error' | 'unconfirmed'
   readonly enabled: boolean
 }
 
@@ -51,7 +56,7 @@ function requestUrl(sessionId: string): string {
  * provider.  Host state is read and written through the session-addressed
  * route; no global model slot or persistent settings are changed.
  */
-export function OpenAICodexFastModeToggle({
+export function LegacyOpenAICodexFastModeToggle({
   directory,
   sessionId,
   t,
@@ -64,6 +69,7 @@ export function OpenAICodexFastModeToggle({
   const eligible = isEligible(directoryState)
   const [state, setState] = useState<FastModeState>({ status: 'loading', enabled: false })
   const [tooltipVisible, setTooltipVisible] = useState(false)
+  const [readAttempt, setReadAttempt] = useState(0)
   const controllerRef = useRef<AbortController | undefined>(undefined)
   const tooltipId = useId()
 
@@ -82,13 +88,13 @@ export function OpenAICodexFastModeToggle({
     setState({ status: 'loading', enabled: false })
     void (async () => {
       try {
-        const response = await fetch(requestUrl(sessionId), {
+        const { response, value } = await requestJson(requestUrl(sessionId), {
           method: 'GET',
           credentials: 'same-origin',
           headers: { accept: 'application/json' },
           signal: controller.signal,
         })
-        const enabled = response.ok ? readEnabled(await response.json().catch(() => undefined)) : undefined
+        const enabled = response.ok ? readEnabled(value) : undefined
         if (!disposed && !controller.signal.aborted) {
           setState(enabled === undefined
             ? { status: 'error', enabled: false }
@@ -105,29 +111,36 @@ export function OpenAICodexFastModeToggle({
       controller.abort()
       if (controllerRef.current === controller) controllerRef.current = undefined
     }
-  }, [eligible, sessionId])
+  }, [eligible, sessionId, readAttempt])
 
   if (!eligible) return null
 
-  const busy = state.status !== 'ready'
+  const busy = state.status === 'loading'
   const title = state.status === 'loading'
     ? t('fastModeLoadingTitle')
-    : state.status === 'error'
-      ? t('fastModeUnavailableTitle')
-      : state.enabled
-        ? t('fastModeEnabledTitle')
-        : t('fastModeDisabledTitle')
+    : state.status === 'unconfirmed'
+      ? t('fastModeUnconfirmedTitle')
+      : state.status === 'error'
+        ? t('fastModeUnavailableTitle')
+        : state.enabled
+          ? t('fastModeEnabledTitle')
+          : t('fastModeDisabledTitle')
 
   const toggle = (): void => {
-    if (state.status !== 'ready' || busy) return
-    controllerRef.current?.abort()
+    if (controllerRef.current !== undefined || busy) return
+    if (state.status === 'error' || state.status === 'unconfirmed') {
+      // Recover by reading Host state, never by replaying an uncertain POST.
+      setState(current => ({ ...current, status: 'loading' }))
+      setReadAttempt(attempt => attempt + 1)
+      return
+    }
     const controller = new AbortController()
     controllerRef.current = controller
     const next = !state.enabled
     setState(current => ({ ...current, status: 'loading' }))
     void (async () => {
       try {
-        const response = await fetch(OPENAI_CODEX_FAST_MODE_PATH, {
+        const { response, value } = await requestJson(OPENAI_CODEX_FAST_MODE_PATH, {
           method: 'POST',
           credentials: 'same-origin',
           headers: {
@@ -137,14 +150,14 @@ export function OpenAICodexFastModeToggle({
           body: JSON.stringify({ sessionId, enabled: next }),
           signal: controller.signal,
         })
-        const enabled = response.ok ? readEnabled(await response.json().catch(() => undefined)) : undefined
+        const enabled = response.ok ? readEnabled(value) : undefined
         if (!controller.signal.aborted) {
           setState(enabled === undefined
-            ? { status: 'error', enabled: state.enabled }
+            ? { status: 'unconfirmed', enabled: state.enabled }
             : { status: 'ready', enabled })
         }
       } catch {
-        if (!controller.signal.aborted) setState({ status: 'error', enabled: state.enabled })
+        if (!controller.signal.aborted) setState({ status: 'unconfirmed', enabled: state.enabled })
       } finally {
         if (controllerRef.current === controller) controllerRef.current = undefined
       }
@@ -226,4 +239,29 @@ export function OpenAICodexFastModeToggle({
       )}
     </span>
   )
+}
+
+/** Keep legacy Fast on other models; only the two exact models can select Ultrafast. */
+export function OpenAICodexFastModeToggle(props: OpenAICodexFastModeToggleInjected & { sessionId: string; t: Translate }) {
+  const snapshot = useSyncExternalStore(listener => props.directory.subscribe(listener), () => props.directory.getSnapshot(), () => props.directory.getSnapshot())
+  if (!isEligible(snapshot)) return null
+  const current = snapshot.current!
+  if (supportsOpenAICodexUltrafast(current.provider, current.model)) {
+    return <AccountScopedSpeedControl {...props} model={current.model} />
+  }
+  return <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+    <LegacyOpenAICodexFastModeToggle {...props} />
+    <button type="button" disabled title={props.t('ultrafastUnsupported')}>Ultrafast</button>
+  </span>
+}
+
+function AccountScopedSpeedControl(props: OpenAICodexFastModeToggleInjected & { sessionId: string; model: string; t: Translate }) {
+  const subscribe = useCallback((listener: () => void) => props.account?.subscribe(listener) ?? (() => undefined), [props.account])
+  const snapshot = useCallback(() => props.account?.getSnapshot(), [props.account])
+  const account = useSyncExternalStore(subscribe, snapshot, snapshot)
+  const identity = account === undefined ? '' : [account.accounts.find(row => row.active)?.accountKey ?? '',
+    account.status.status, account.operation.kind, account.authorizationRevision ?? 0].join(':')
+  const available = account === undefined || (!account.busy && account.status.status === 'signed-in')
+  return <OpenAICodexSpeedControl key={props.sessionId + ':' + props.model + ':' + identity}
+    sessionId={props.sessionId} model={props.model} t={props.t} available={available} />
 }

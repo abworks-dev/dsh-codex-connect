@@ -6,8 +6,8 @@ export const OPENAI_CODEX_MODEL_CATALOG_PATH = '/plugins/dsh-codex-connect/model
 /** Versioned official-client override policy, not a measured endpoint capacity. */
 export const OPENAI_CODEX_CONTEXT_LIMIT_SOURCE = 'https://github.com/openai/codex/blob/39598ed17885970828acd42a6370131ed0190a98/codex-rs/models-manager/models.json'
 
-/** New-model policy comes from its own pinned official catalog revision. */
-export const OPENAI_CODEX_SOL61_CONTEXT_LIMIT_SOURCE = 'https://github.com/openai/codex/blob/a5cce8895a1400f94eb0a71771275284027fff17/codex-rs/models-manager/models.json'
+/** Sol61 provenance refresh; the immutable catalog's default/override limits are unchanged. */
+export const OPENAI_CODEX_SOL61_CONTEXT_LIMIT_SOURCE = 'https://github.com/openai/codex/blob/d63a9b8344cfe58bc78bbe319b560378fc8756ef/codex-rs/models-manager/models.json'
 
 /** Preserve historical provenance for existing models. */
 export function openAICodexContextLimitSource(id: string): string {
@@ -47,11 +47,13 @@ export function isValidOpenAICodexContextBudget(value: number, maximum: number):
 export interface OpenAICodexModelCatalogEntry {
   id: string
   name: string
-  /** Unmodified provider-catalog default, even when an override is active. */
+  /** Effective base default before user overrides; a known bundled Sol61 snapshot is calibrated. */
   contextWindow: number
   /** Local configuration ceiling; account/route capacity can differ. */
   maxContextWindow: number
   contextLimitSource: 'codex-catalog' | 'catalog-default'
+  /** Actual Host-advertised choices; absent for models without reasoning support. */
+  reasoning?: { efforts: { id: string; name: string }[]; defaultEffort?: string }
 }
 
 /** Validate the model catalog before it enters React state. */
@@ -72,8 +74,30 @@ export function decodeOpenAICodexModelCatalog(value: unknown): OpenAICodexModelC
       || !isValidOpenAICodexContextBudget(maxContextWindow, Number.MAX_SAFE_INTEGER)
       || !isValidOpenAICodexContextBudget(contextWindow, maxContextWindow)
       || (contextLimitSource !== 'codex-catalog' && contextLimitSource !== 'catalog-default')) return undefined
+    const reasoning = decodeReasoning(record['reasoning'])
+    if (record['reasoning'] !== undefined && reasoning === undefined) return undefined
     ids.add(id)
-    catalog.push({ id, name, contextWindow, maxContextWindow, contextLimitSource })
+    catalog.push({ id, name, contextWindow, maxContextWindow, contextLimitSource, ...(reasoning === undefined ? {} : { reasoning }) })
   }
   return catalog
+}
+
+function decodeReasoning(value: unknown): OpenAICodexModelCatalogEntry['reasoning'] {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined
+  const record = value as Record<string, unknown>
+  const choices = record['efforts']
+  if (!Array.isArray(choices) || choices.length === 0 || choices.length > 64) return undefined
+  const efforts: { id: string; name: string }[] = []
+  const ids = new Set<string>()
+  for (const choice of choices) {
+    if (typeof choice !== 'object' || choice === null || Array.isArray(choice)) return undefined
+    const item = choice as Record<string, unknown>
+    if (typeof item['id'] !== 'string' || item['id'].length === 0 || item['id'].length > 128 || ids.has(item['id'])
+      || typeof item['name'] !== 'string' || item['name'].length === 0 || item['name'].length > 256) return undefined
+    ids.add(item['id'])
+    efforts.push({ id: item['id'], name: item['name'] })
+  }
+  const defaultEffort = record['defaultEffort']
+  if (defaultEffort !== undefined && (typeof defaultEffort !== 'string' || !ids.has(defaultEffort))) return undefined
+  return { efforts, ...(defaultEffort === undefined ? {} : { defaultEffort }) }
 }

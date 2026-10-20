@@ -6,11 +6,13 @@ import type { ConfigForm } from '@deepseek-ai/dsh-client-ui-settings/client'
 import type { OpenAICodexUsage } from '../usage.ts'
 import type { OpenAICodexSettingsConfig } from '../settings-contract.ts'
 import { OpenAICodexAccountStore } from './account-store.ts'
+import { isOfficialDesktopShell } from './browser-launch.ts'
 import type { AccountStatus, AccountSnapshot } from './account-store.ts'
 import type { OpenAICodexSettingsKey } from './locales.ts'
 import { OpenAICodexConfiguration } from './OpenAICodexConfiguration.tsx'
 import type { OpenAICodexSettingsModule } from './OpenAICodexConfiguration.tsx'
 import { OpenAICodexUpdateSettings } from './OpenAICodexUpdateNotice.tsx'
+import { OpenAICodexRuntimeIdentity } from './OpenAICodexRuntimeIdentity.tsx'
 import type { OpenAICodexUpdateStore } from './update-store.ts'
 
 /** Dependencies injected by the browser plugin entry. */
@@ -192,6 +194,7 @@ export function dotStyle(status: AccountStatus['status']): CSSProperties {
 
 /** Non-sensitive account state label for either settings presentation. */
 export function accountStatusLabel(status: AccountStatus['status'], t: OpenAICodexSettingsInjected['t']): string {
+  if (status === 'remote-web-origin-not-trusted' && isOfficialDesktopShell()) return t('desktopOriginTitle')
   const keys = {
     'signed-in': 'signedIn', loading: 'loadingAccount', 'signing-in': 'signingIn',
     'reauth-required': 'reauthRequired', 'remote-web-origin-not-trusted': 'remoteOriginTitle',
@@ -372,9 +375,11 @@ export function AccountFeedback({ t, snapshot, store }: {
   const { status, loginUrl, operationError } = snapshot
   const [copied, setCopied] = useState(false)
   const [copyFailed, setCopyFailed] = useState(false)
-  const trustedOriginCommand = `dsh plugin --profile web exec dsh-codex-connect trust-origin ${window.location.origin}`
+  const desktop = isOfficialDesktopShell()
+  const trustedOriginCommand = desktop ? undefined : `dsh plugin --profile web exec dsh-codex-connect trust-origin ${window.location.origin}`
 
   const copyTrustedOriginCommand = async (): Promise<void> => {
+    if (trustedOriginCommand === undefined) return
     setCopyFailed(false)
     try {
       if (navigator.clipboard?.writeText === undefined) throw new Error('clipboard unavailable')
@@ -411,15 +416,17 @@ export function AccountFeedback({ t, snapshot, store }: {
     {operationError === undefined ? null : <p style={errorStyle}>{operationError}</p>}
     {status.status === 'remote-web-origin-not-trusted' ? (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <p style={errorStyle}>{t('remoteOriginDescription')}</p>
-        <p style={bodyStyle}>{t('remoteOriginCommandHelp')}</p>
-        <code style={commandStyle}>{trustedOriginCommand}</code>
-        <div style={rowStyle}>
-          <button type="button" style={buttonStyle} onClick={() => { void copyTrustedOriginCommand() }}>
-            {copied ? t('remoteOriginCopied') : t('remoteOriginCopy')}
-          </button>
-          {copyFailed ? <span style={errorStyle}>{t('remoteOriginCopyFailed')}</span> : null}
-        </div>
+        <p style={errorStyle}>{t(desktop ? 'desktopOriginDescription' : 'remoteOriginDescription')}</p>
+        <p style={bodyStyle}>{t(desktop ? 'desktopOriginDiagnosticsHelp' : 'remoteOriginCommandHelp')}</p>
+        {trustedOriginCommand === undefined ? null : <>
+          <code style={commandStyle}>{trustedOriginCommand}</code>
+          <div style={rowStyle}>
+            <button type="button" style={buttonStyle} onClick={() => { void copyTrustedOriginCommand() }}>
+              {copied ? t('remoteOriginCopied') : t('remoteOriginCopy')}
+            </button>
+            {copyFailed ? <span style={errorStyle}>{t('remoteOriginCopyFailed')}</span> : null}
+          </div>
+        </>}
       </div>
     ) : null}
   </>
@@ -447,7 +454,7 @@ export function OpenAICodexSettings({ t, configScope, updater, account, embedded
       ? t('modelsModuleDefault')
       : t('modelsModuleSelected', { count: config.models.length })
     if (module === 'network') return t(config?.enableProxy === true ? 'networkModuleProxy' : 'networkModuleDirect')
-    const count = config === undefined ? 0 : [config.enableSearch, config.enableReserveFallback, config.enableNewSessionFastMode, config.enableNewSubagentFastMode, config.enableNativeCompaction, config.enableImageTool, config.enableImageGeneration, config.enableAutoReview].filter(Boolean).length
+    const count = config === undefined ? 0 : [config.enableSearch, config.enableReserveFallback, (config.newSessionSpeedMode ?? (config.enableNewSessionFastMode ? 'fast' : 'standard')) !== 'standard', (config.newSubagentSpeedMode ?? (config.enableNewSubagentFastMode ? 'fast' : 'standard')) !== 'standard', config.enableNativeCompaction, config.enableImageTool, config.enableImageGeneration, config.enableAutoReview].filter(Boolean).length
     return t('capabilitiesModuleEnabled', { count })
   }
 
@@ -464,6 +471,7 @@ export function OpenAICodexSettings({ t, configScope, updater, account, embedded
       )}
       <div style={embedded ? embeddedCardStyle : cardStyle}>
         {accountOnly || updater === undefined ? null : <OpenAICodexUpdateSettings t={t} updater={updater} />}
+        {accountOnly ? null : <OpenAICodexRuntimeIdentity t={t} />}
         {accountOnly ? null : (
           <div style={moduleTabsStyle} role="tablist" aria-label={t('settingsModules')}>
             {SETTINGS_MODULES.map((module, index) => (

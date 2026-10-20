@@ -1,12 +1,14 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { StrictMode } from 'react'
+import { BROWSER_REQUEST_TIMEOUT_MS } from '../src/client/request-json.ts'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import type { ISessions } from '@deepseek-ai/dsh-api-session-controller/client'
 import { en } from '../src/client/locales.ts'
 import type { OpenAICodexSettingsKey } from '../src/client/locales.ts'
-import { IMAGE_RESULT_PREFIX } from '../src/image-presentation.ts'
+import { IMAGE_RESULT_PREFIX, IMAGE_RECOVERY_RESULT_PREFIX } from '../src/image-presentation.ts'
 
 vi.mock('@deepseek-ai/dsh-client-ui-primitives', () => ({
     IconCopyOutlineRegular: () => <svg aria-hidden="true" data-icon="copy" />,
@@ -69,9 +71,52 @@ const standard = {
   useWorkspaces: vi.fn(),
 } as unknown as Omit<CodexImageToolViewProps, 'block' | 't' | 'sessions'>
 
-afterEach(() => { cleanup(); actionPrompt.mockClear(); actionCancel.mockClear(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
+afterEach(() => { cleanup(); vi.useRealTimers(); actionPrompt.mockClear(); actionCancel.mockClear(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe('Codex image Tool view', () => {
+  it.each(['native', 'ptc'])('downloads and continues an original-only %s result without reading a fake preview or regenerating', async mode => {
+    const meta = { kind: 'codex-connect-images', schemaVersion: 3, prompt: 'A blue mug',
+      images: [{ original, previewStatus: 'unavailable' }] }
+    const readAttachment = vi.fn()
+    const prompt = vi.fn(async () => ({ ok: true as const, value: { accepted: true as const } }))
+    const recoveredSessions = { binding: vi.fn(() => ({ session: { readAttachment, prompt } })) } as unknown as ISessions
+    const fetchOriginal = vi.fn(async () => ({ ok: true, blob: async () => new Blob([new Uint8Array([1, 2, 3])], { type: 'image/png' }) }))
+    const createObjectURL = vi.fn(() => 'blob:recovered-original')
+    const revokeObjectURL = vi.fn()
+    vi.stubGlobal('URL', { createObjectURL, revokeObjectURL })
+    vi.stubGlobal('fetch', fetchOriginal)
+    const download = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    render(<CodexImageToolView {...standard} t={t} sessions={recoveredSessions} block={{
+      kind: 'tool-result', seq: 2, time: 2, callId: 'recovered', callTime: 1, subCalls: [], isError: false,
+      call: { name: 'codex_connect_image_generate', argsRaw: JSON.stringify({ prompt: meta.prompt }) },
+      content: [{ type: 'text', text: IMAGE_RECOVERY_RESULT_PREFIX + JSON.stringify(meta) }],
+      ...(mode === 'native' ? { meta } : {}),
+    }} />)
+    expect(screen.getByText(en.imagePreviewUnavailable)).toBeTruthy()
+    expect(screen.queryByRole('button', { name: en.downloadPreview })).toBeNull()
+    expect(screen.queryByTestId('codex-image-gallery')).toBeNull()
+    expect(readAttachment).not.toHaveBeenCalled()
+    expect(prompt).not.toHaveBeenCalled()
+    expect(fetchOriginal).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: en.downloadOriginal }))
+    await waitFor(() => expect(download).toHaveBeenCalledOnce())
+    expect(fetchOriginal).toHaveBeenCalledWith(
+      `/plugins/dsh-codex-connect/images/original?sessionId=session-1&assetId=${original.assetId}`,
+      expect.objectContaining({ credentials: 'same-origin' }),
+    )
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:recovered-original')
+    fireEvent.click(screen.getByRole('button', { name: en.editImage }))
+    fireEvent.change(screen.getByRole('textbox', { name: en.editInstructions }), { target: { value: 'Make the mug red' } })
+    fireEvent.click(screen.getByRole('button', { name: en.submitImageEdit }))
+    await waitFor(() => expect(prompt).toHaveBeenCalledOnce())
+    const followup = JSON.stringify(prompt.mock.calls)
+    expect(followup).toContain(original.assetId)
+    expect(followup).toContain('Make the mug red')
+    expect(followup).not.toContain('attachmentId')
+    expect(followup).toContain('edit')
+    expect(readAttachment).not.toHaveBeenCalled()
+  })
+
   it('PR272 review: shows the safe actionable reason for a rejected edit selection', () => {
     const reason = 'Error: Target image: is unavailable or does not match a reference in this session. Select or attach the image again.'
     render(<CodexImageToolView {...standard} t={t} sessions={actionSessions} block={{
@@ -185,7 +230,7 @@ describe('Codex image Tool view', () => {
     await waitFor(() => { expect(fetchOriginal).toHaveBeenCalledOnce() })
     expect(fetchOriginal).toHaveBeenCalledWith(
       `/plugins/dsh-codex-connect/images/original?sessionId=session-1&assetId=${original.assetId}`,
-      { method: 'GET', headers: { accept: 'image/png' }, credentials: 'same-origin' },
+      { method: 'GET', headers: { accept: 'image/png' }, credentials: 'same-origin', signal: expect.any(AbortSignal) },
     )
     await waitFor(() => { expect(click).toHaveBeenCalledOnce() })
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:original-image')
@@ -349,4 +394,91 @@ describe('Codex image Tool view', () => {
     expect(document.body.textContent).not.toContain(raw)
   })
 
+})
+
+
+function originalBlock(ref = original): CodexImageToolViewProps['block'] {
+  return { kind: 'tool-result', seq: 2, time: 2, callId: 'call-1', call: null, callTime: 1,
+    content: [], isError: false, subCalls: [], meta: { kind: 'codex-connect-images', schemaVersion: 1,
+      prompt: 'original download', images: [{ original: ref, preview: image }] } }
+}
+
+describe('bounded original image recovery', () => {
+  it.each(['headers', 'blob'] as const)('times out hung %s, ignores late completion and retries explicitly in StrictMode', async phase => {
+    vi.useFakeTimers()
+    vi.stubGlobal('URL', { createObjectURL: vi.fn(() => 'blob:image'), revokeObjectURL: vi.fn() })
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    let resolve!: (value: any) => void
+    let signal: AbortSignal | null | undefined
+    const stalled = new Promise<any>(done => { resolve = done })
+    const blob = new Blob([new Uint8Array([1, 2, 3])])
+    const response = { ok: true, blob: async () => blob }
+    const fetchMock = vi.fn((_path: string, init: RequestInit) => {
+      signal = init.signal
+      return phase === 'headers' ? stalled : Promise.resolve({ ok: true, blob: () => stalled })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    render(<StrictMode><CodexImageToolView {...standard} t={t} sessions={sessions} block={originalBlock()} /></StrictMode>)
+    await act(async () => {})
+    const created = vi.mocked(URL.createObjectURL).mock.calls.length
+    fireEvent.click(screen.getByRole('button', { name: en.downloadOriginal }))
+    await act(async () => { await vi.advanceTimersByTimeAsync(BROWSER_REQUEST_TIMEOUT_MS) })
+    expect(signal?.aborted).toBe(true)
+    expect(screen.getByRole('button', { name: en.downloadFailed })).toHaveProperty('disabled', false)
+    await act(async () => { resolve(phase === 'headers' ? response : blob) })
+    expect(click).not.toHaveBeenCalled()
+    expect(URL.createObjectURL).toHaveBeenCalledTimes(created)
+    fetchMock.mockImplementation(() => Promise.resolve(response))
+    fireEvent.click(screen.getByRole('button', { name: en.downloadFailed }))
+    await act(async () => {})
+    expect(click).toHaveBeenCalledOnce()
+    expect(URL.createObjectURL).toHaveBeenCalledTimes(created + 1)
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:image')
+    expect(screen.getByRole('button', { name: en.downloadOriginal })).toHaveProperty('disabled', false)
+  })
+
+  it.each([
+    ['unmount', 'headers'], ['unmount', 'blob'], ['session', 'headers'],
+    ['session', 'blob'], ['asset', 'headers'], ['asset', 'blob'],
+  ] as const)('aborts on %s and never downloads late %s', async (replacement, phase) => {
+    vi.stubGlobal('URL', { createObjectURL: vi.fn(() => 'blob:image'), revokeObjectURL: vi.fn() })
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    let resolve!: (value: any) => void
+    let signal: AbortSignal | null | undefined
+    const body = vi.fn(() => new Promise<Blob>(done => { resolve = done }))
+    vi.stubGlobal('fetch', vi.fn((_path: string, init: RequestInit) => {
+      signal = init.signal
+      return phase === 'headers' ? new Promise<Response>(done => { resolve = done })
+        : Promise.resolve({ ok: true, blob: body })
+    }))
+    const view = render(<CodexImageToolView {...standard} t={t} sessions={sessions} block={originalBlock()} />)
+    await act(async () => {})
+    fireEvent.click(screen.getByRole('button', { name: en.downloadOriginal }))
+    await act(async () => {})
+    const created = vi.mocked(URL.createObjectURL).mock.calls.length
+    if (replacement === 'unmount') view.unmount()
+    else view.rerender(<CodexImageToolView {...standard} sessionId={replacement === 'session' ? 'session-2' as typeof standard.sessionId : standard.sessionId}
+      t={t} sessions={sessions} block={originalBlock(replacement === 'asset' ? { ...original, assetId: `img_${'c'.repeat(32)}` } : original)} />)
+    expect(signal?.aborted).toBe(true)
+    await act(async () => { resolve(phase === 'headers' ? { ok: true, blob: body } : new Blob([new Uint8Array([1, 2, 3])])) })
+    if (phase === 'headers') expect(body).not.toHaveBeenCalled()
+    expect(click).not.toHaveBeenCalled()
+    // Session replacement can create its own preview, but not an original URL.
+    expect(vi.mocked(URL.createObjectURL).mock.calls.slice(created).every(([blob]) => blob instanceof Blob && blob.type === 'image/png')).toBe(true)
+    view.unmount()
+    expect(vi.mocked(URL.revokeObjectURL).mock.calls.length).toBe(vi.mocked(URL.createObjectURL).mock.calls.length)
+  })
+
+  it('rejects incomplete original bytes without creating a URL or clicking', async () => {
+    vi.stubGlobal('URL', { createObjectURL: vi.fn(() => 'blob:image'), revokeObjectURL: vi.fn() })
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, blob: async () => new Blob([new Uint8Array([1, 2])]) })))
+    render(<CodexImageToolView {...standard} t={t} sessions={sessions} block={originalBlock()} />)
+    await act(async () => {})
+    const created = vi.mocked(URL.createObjectURL).mock.calls.length
+    fireEvent.click(screen.getByRole('button', { name: en.downloadOriginal }))
+    await screen.findByRole('button', { name: en.downloadFailed })
+    expect(click).not.toHaveBeenCalled()
+    expect(URL.createObjectURL).toHaveBeenCalledTimes(created)
+  })
 })

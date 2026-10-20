@@ -22,6 +22,7 @@ import type { OpenAICodexSettingsKey } from './locales.ts'
 import { CodexImageGallery } from './CodexImageGallery.tsx'
 import type { CodexImageGalleryLabels } from './CodexImageGallery.tsx'
 import type { OpenAICodexConfigForm } from './config-form.ts'
+import { requestBody } from './request-json.ts'
 
 
 export interface CodexImageToolViewInjected {
@@ -139,21 +140,29 @@ function triggerDownload(url: string, name: string): void {
 
 function DownloadButton({ label, onDownload, t }: {
   label: string
-  onDownload: () => Promise<void>
+  onDownload: (signal: AbortSignal) => Promise<void>
   t: Translate<OpenAICodexSettingsKey>
 }) {
   const [state, setState] = useState<DownloadState>('idle')
   const alive = useRef(true)
-  useEffect(() => () => { alive.current = false }, [])
+  const request = useRef<AbortController | undefined>(undefined)
+  useEffect(() => {
+    alive.current = true
+    return () => { alive.current = false; request.current?.abort() }
+  }, [])
 
   async function download(): Promise<void> {
-    if (state === 'pending') return
+    if (request.current !== undefined) return
+    const controller = new AbortController()
+    request.current = controller
     setState('pending')
     try {
-      await onDownload()
-      if (alive.current) setState('idle')
+      await onDownload(controller.signal)
+      if (alive.current && !controller.signal.aborted) setState('idle')
     } catch {
-      if (alive.current) setState('failed')
+      if (alive.current && !controller.signal.aborted) setState('failed')
+    } finally {
+      if (request.current === controller) request.current = undefined
     }
   }
 
@@ -174,14 +183,17 @@ function DownloadButton({ label, onDownload, t }: {
   </>
 }
 
-async function downloadOriginal(sessionId: string, original: OpenAICodexOriginalImageRef): Promise<void> {
-  const response = await fetch(openAICodexOriginalImageUrl(sessionId, original.assetId), {
+async function downloadOriginal(sessionId: string, original: OpenAICodexOriginalImageRef, signal: AbortSignal): Promise<void> {
+  const { value: blob } = await requestBody(openAICodexOriginalImageUrl(sessionId, original.assetId), {
     method: 'GET',
     headers: { accept: original.mediaType },
     credentials: 'same-origin',
+    signal,
+  }, async response => {
+    if (!response.ok) throw new Error('Original image download failed')
+    return response.blob()
   })
-  if (!response.ok) throw new Error('Original image download failed')
-  const blob = await response.blob()
+  if (signal.aborted) throw signal.reason
   if (blob.size !== original.bytes) throw new Error('Original image download was incomplete')
   const url = URL.createObjectURL(blob)
   try {
@@ -273,10 +285,13 @@ function useImageLoader(sessionId: string, sessions: ISessions) {
   const activeSession = useRef(sessionId)
   const disposed = useRef(false)
   activeSession.current = sessionId
-  useEffect(() => () => {
-    disposed.current = true
-    for (const entry of urls.current.values()) URL.revokeObjectURL(entry.url)
-    urls.current.clear()
+  useEffect(() => {
+    disposed.current = false
+    return () => {
+      disposed.current = true
+      for (const entry of urls.current.values()) URL.revokeObjectURL(entry.url)
+      urls.current.clear()
+    }
   }, [])
   useEffect(() => () => {
     for (const [key, entry] of urls.current) {
@@ -421,9 +436,9 @@ function ImageEditForm({ decoded, actions, onClose, t }: {
   const previewOnly = image !== undefined && image.original === undefined
   const ready = image !== undefined && instructions.trim().length > 0 && (!previewOnly || allowPreview)
   async function send(): Promise<void> {
-    if (!ready || image === undefined || actions.pending !== null) return
+    if (!ready || image === undefined || actions.pending !== null || (image.original === undefined && image.preview === undefined)) return
     const target: ImageInputRef = image.original === undefined
-      ? { attachmentId: String(image.preview.attachmentId), usePreview: true }
+      ? { attachmentId: String(image.preview!.attachmentId), usePreview: true }
       : { assetId: image.original.assetId }
     const accepted = await actions.followUp(imageRequestFollowUp({ operation: 'edit', prompt: instructions.trim(), edit: { target, references: [] } }))
     if (accepted && mounted.current) onClose()
@@ -434,8 +449,8 @@ function ImageEditForm({ decoded, actions, onClose, t }: {
         style={{ display: 'block', width: '100%', maxWidth: '100%', minHeight: 32 }}
         onChange={event => { setSelected(event.currentTarget.value); setAllowPreview(false) }}>
         {decoded.images.length > 1 ? <option value="">{t('selectEditTarget')}</option> : null}
-        {decoded.images.map((item, index) => <option key={`${item.original?.assetId ?? item.preview.attachmentId}:${index}`} value={String(index)}>
-          {String(index + 1)}. {item.original?.name ?? item.preview.name ?? t('image')}
+        {decoded.images.map((item, index) => <option key={`${item.original?.assetId ?? item.preview?.attachmentId}:${index}`} value={String(index)}>
+          {String(index + 1)}. {item.original?.name ?? item.preview?.name ?? t('image')}
         </option>)}
       </select>
     </label>
@@ -468,7 +483,7 @@ function ImageResultCard({ decoded, sessionId, load, sessionActions, galleryLabe
   const [editing, setEditing] = useState(false)
   return <ResponsiveCard
     label={t(decoded.edit === undefined ? 'completed' : 'imageEdited')}
-    visual={<><div style={header}><strong>{t(decoded.edit === undefined ? 'completed' : 'imageEdited')}</strong></div><CodexImageGallery images={decoded.images.map(image => ({ attachment: image.preview }))} load={load} align="start" labels={galleryLabels} /></>}
+    visual={<><div style={header}><strong>{t(decoded.edit === undefined ? 'completed' : 'imageEdited')}</strong></div><CodexImageGallery images={decoded.images.flatMap(image => image.preview === undefined ? [] : [{ attachment: image.preview }])} load={load} align="start" labels={galleryLabels} />{decoded.images.some(image => image.previewStatus === 'unavailable') ? <span role="status" style={detail}>{t('imagePreviewUnavailable')}</span> : null}</>}
     side={<>
       <PromptPanel prompt={decoded.prompt} t={t} />
       <div style={actionRow}>
@@ -485,20 +500,25 @@ function ImageResultCard({ decoded, sessionId, load, sessionActions, galleryLabe
       {decoded.edit === undefined ? null : <span style={detail}>{t('editFrom', {
         source: imageInputLabel(decoded.edit.target), count: decoded.edit.references.length,
       })}</span>}
-      {editing && actionsEnabled ? <ImageEditForm key={JSON.stringify([sessionId, decoded.images.map(image => [image.original?.assetId ?? null, image.preview.attachmentId])])}
+      {editing && actionsEnabled ? <ImageEditForm key={JSON.stringify([sessionId, decoded.images.map(image => [image.original?.assetId ?? null, image.preview?.attachmentId ?? null])])}
         decoded={decoded} actions={sessionActions} onClose={() => { setEditing(false) }} t={t} /> : null}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>{decoded.images.flatMap((image, index) => {
-        const suffix = image.preview.name ?? String(index + 1)
+        const preview = image.preview
+        const suffix = preview?.name ?? String(index + 1)
         const exactOriginal = image.original
         const original = exactOriginal === undefined ? [] : [<DownloadButton
-          key={`${exactOriginal.assetId}:${index}:original`}
-          onDownload={() => downloadOriginal(sessionId, exactOriginal)}
+          key={`${sessionId}:${JSON.stringify(exactOriginal)}:${index}:original`}
+          onDownload={signal => downloadOriginal(sessionId, exactOriginal, signal)}
           t={t}
           label={decoded.images.length === 1 ? t('downloadOriginal') : t('downloadOriginalNamed', { name: exactOriginal.name })}
         />]
+        if (preview === undefined) return original
         return [...original, <DownloadButton
-          key={`${image.preview.attachmentId as string}:${index}:preview`}
-          onDownload={async () => { triggerDownload(await load(image.preview), image.preview.name ?? t('image')) }}
+          key={`${sessionId}:${preview.attachmentId as string}:${index}:preview`}
+          onDownload={async signal => {
+            const url = await load(preview)
+            if (!signal.aborted) triggerDownload(url, preview.name ?? t('image'))
+          }}
           t={t}
           label={image.original === undefined
             ? decoded.images.length === 1 ? t('download') : t('downloadNamed', { name: suffix })
@@ -510,11 +530,11 @@ function ImageResultCard({ decoded, sessionId, load, sessionActions, galleryLabe
         <div style={{ ...detail, display: 'grid', gap: 4, marginTop: 6 }}>{decoded.images.flatMap((image, index) => {
           const preview = image.preview
           const original = image.original
-          const name = preview.name ?? String(index + 1)
-          if (original === undefined) return [<span key={`${preview.attachmentId as string}:${index}`}>{t('imageDetail', { name, format: formatMediaType(preview.mediaType), width: preview.width, height: preview.height, size: formatBytes(preview.bytes) })}</span>]
+          const name = preview?.name ?? String(index + 1)
+          if (original === undefined) return preview === undefined ? [] : [<span key={`${preview.attachmentId as string}:${index}`}>{t('imageDetail', { name, format: formatMediaType(preview.mediaType), width: preview.width, height: preview.height, size: formatBytes(preview.bytes) })}</span>]
           return [
             <span key={`${original.assetId}:${index}:original`}>{t('originalImageDetail', { name: original.name, format: formatMediaType(original.mediaType), width: original.width, height: original.height, size: formatBytes(original.bytes) })}</span>,
-            <span key={`${preview.attachmentId as string}:${index}:preview`}>{t('previewImageDetail', { format: formatMediaType(preview.mediaType), width: preview.width, height: preview.height, size: formatBytes(preview.bytes) })}</span>,
+            preview === undefined ? null : <span key={`${preview.attachmentId as string}:${index}:preview`}>{t('previewImageDetail', { format: formatMediaType(preview.mediaType), width: preview.width, height: preview.height, size: formatBytes(preview.bytes) })}</span>,
           ]
         })}</div>
       </details>
