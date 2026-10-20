@@ -8,9 +8,7 @@ allowBuilds:
 
 autoInstallPeers: true
 
-# Patch affected transitive dependencies without upgrading the DSH host API set.
+# The math extension still requests vulnerable KaTeX ^0.16; reuse our patched renderer.
+# Remove after the upstream consumer accepts a patched line and the regression passes without it.
 overrides:
-  'undici@>=7.0.0 <7.29.1': 7.29.1
-  'katex@>=0.11.0 <0.18.2': 0.18.9
-  'source-map-js@>=1.0.0 <1.2.2': 1.2.2
-  'compression@>=1.0.0 <1.8.2': 1.8.2
+  'micromark-extension-math@3.1.0>katex': 0.18.9
