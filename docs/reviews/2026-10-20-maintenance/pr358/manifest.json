@@ -4,7 +4,8 @@
   "redactions": [
     "ANSI color codes",
     "local user home",
-    "local macOS temporary-root prefix"
+    "local macOS temporary-root prefix",
+    "trailing line whitespace and extra blank lines at EOF"
   ],
   "artifacts": [
     {
@@ -16,14 +17,14 @@
     {
       "path": "macos-main/focused.log",
       "rawSha256": "d554d900940a1e7b09e75059f3b40aff75dadb0423b7096aeed1a2743a47c115",
-      "publishedSha256": "0c3b4911a1a7a4883660a36b1f1962ad8be34ebbd0a21f76f676ce72746c0e0e",
-      "bytes": 417
+      "publishedSha256": "320a08ad0be552e18d99f91e5a8ca78047b3956e96e5ae4ccd2c4e034b0f270c",
+      "bytes": 416
     },
     {
       "path": "macos-main/full-check.log",
       "rawSha256": "8a03b3a502454d28dd347a4173274689e136cd4dd9c04bbbfb1252201284ba0a",
-      "publishedSha256": "575109a847384eaa6bf6d9a109f10e1868d7fdd8cc2f23e2d6dac2c112a341e9",
-      "bytes": 41675
+      "publishedSha256": "d1c439ccb9f59f31366ec9e4ceecc5ee7e84e531eeee4c074cd2b6824b95bb0e",
+      "bytes": 41674
     },
     {
       "path": "macos-candidate/result.json",
@@ -34,14 +35,14 @@
     {
       "path": "macos-candidate/focused.log",
       "rawSha256": "9c70ebaebde873d0ed3444d7d14bd4c34bbe1a7594b7cc324958d1eacc2aaee0",
-      "publishedSha256": "127a52fcfb5ba6a85d8bf2b89267c3389a06189a9f8aef423f95e99bd77467f7",
-      "bytes": 417
+      "publishedSha256": "91d8976b40520e0c1d0f5a5231a895b4e4bd8026e6db4cb48b8c084f950eb00e",
+      "bytes": 416
     },
     {
       "path": "macos-candidate/full-check.log",
       "rawSha256": "2e3ac5bd67e1765c8398b2939df1b30cf6da48a25a7355680446742e1502e249",
-      "publishedSha256": "26ae27a16c8b9091f8f37d45ddb99091bbc156f33db5c469316313a1e42257f8",
-      "bytes": 43657
+      "publishedSha256": "09a734670166e106f1f93a4de3aac1eb08c1451e9065d80cdee49b10af81dc9a",
+      "bytes": 43656
     },
     {
       "path": "linux-initial/result.json",
@@ -52,14 +53,14 @@
     {
       "path": "linux-initial/main-focused.log",
       "rawSha256": "ad9369ff8ded51f81e18647f0937b10837cdf7f2738d165267f3d531c9482f61",
-      "publishedSha256": "234891aa27c30d7d1eb0c44c07f6e16f52bce3bd9e65208bea523ca2fc66924e",
-      "bytes": 359
+      "publishedSha256": "de01995028f18f075a9d8f8496c459320fc225642d6f847171831c57cca44fa8",
+      "bytes": 358
     },
     {
       "path": "linux-initial/candidate-focused.log",
       "rawSha256": "c3e949e28c0f8a54efba866aca894b7362226f774274971e2a39d0e9a90f5992",
-      "publishedSha256": "d609722494ff44f652b652ac6c0dac1ab3e4c758882e6d89ad012f43b4c00ea9",
-      "bytes": 364
+      "publishedSha256": "f972690376c2d9076ab768e240867903bedd938888958aaafeafd95681e6ae34",
+      "bytes": 363
     },
     {
       "path": "linux-initial/main-full-check.log",
@@ -82,14 +83,14 @@
     {
       "path": "linux-path-corrected/main-full-check.log",
       "rawSha256": "dc994b451ac4c0a1c35ea3e657a91573cf15f16a6178dc8247445a3cc65c820e",
-      "publishedSha256": "9c750cc3afa22ccc1a3112ad271d7f2c2a5326defe559a9b995a3d971b9ab86d",
-      "bytes": 34266
+      "publishedSha256": "9a0f948d9385d401bc11637fa4844ca480d6a65a0575f3fee87ccaef89c646be",
+      "bytes": 34265
     },
     {
       "path": "linux-path-corrected/candidate-full-check.log",
       "rawSha256": "83b1d57502ef94868729e5bb044d27e144c84ea63de12721ba7ace809768918d",
-      "publishedSha256": "1f20b324b78811568aa3a82dea06eeaa91af3ac88083e95251e40d594eeb426d",
-      "bytes": 34447
+      "publishedSha256": "d3d53f59e68b3c420fa341a598b9153dec6c148ea7cc9ec7706ecaea82270d61",
+      "bytes": 34446
     },
     {
       "path": "linux-path-corrected/run-pair.mjs",

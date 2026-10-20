@@ -365,7 +365,7 @@ Source lint gate: 6 invalid cases rejected; 2 valid cases accepted
 > tsdown
 
 ℹ tsdown v0.23.1 powered by rolldown v1.2.14
-ℹ config file: <user-home>/Developer/.webcodex-worktrees/dsh-codex-connect-1cde540e/tsdown.config.ts 
+ℹ config file: <user-home>/Developer/.webcodex-worktrees/dsh-codex-connect-1cde540e/tsdown.config.ts
 ℹ entry: src/index.ts, src/invariant.ts
 ℹ target: es2024
 ℹ tsconfig: tsconfig.json

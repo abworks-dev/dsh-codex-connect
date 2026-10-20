@@ -105,7 +105,8 @@ keep running full suites until they pass.
 ## Artifact integrity
 
 [manifest.json](manifest.json) records original and published SHA-256 values.
-Public copies remove ANSI color codes and local user/temporary-root prefixes;
+Public copies remove ANSI color codes, local user/temporary-root prefixes and
+trailing whitespace;
 test messages, failures, counts and exit codes remain. Preparation-command
 hashes in result JSON may refer to raw setup logs retained in the isolated
 test directory; the published manifest lists exactly the files provided here.
