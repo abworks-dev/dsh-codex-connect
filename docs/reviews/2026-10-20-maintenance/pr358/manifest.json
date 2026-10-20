@@ -1,0 +1,101 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-20",
+  "redactions": [
+    "ANSI color codes",
+    "local user home",
+    "local macOS temporary-root prefix"
+  ],
+  "artifacts": [
+    {
+      "path": "macos-main/result.json",
+      "rawSha256": "eb903e709afc77e84e1e3880b431d46c72c9a423379a6ee03df37274f526446b",
+      "publishedSha256": "f0e56c9c3170ccc8d6017cb2dfe62aff29f9755898dada9051cf215dc3eb8082",
+      "bytes": 1187
+    },
+    {
+      "path": "macos-main/focused.log",
+      "rawSha256": "d554d900940a1e7b09e75059f3b40aff75dadb0423b7096aeed1a2743a47c115",
+      "publishedSha256": "0c3b4911a1a7a4883660a36b1f1962ad8be34ebbd0a21f76f676ce72746c0e0e",
+      "bytes": 417
+    },
+    {
+      "path": "macos-main/full-check.log",
+      "rawSha256": "8a03b3a502454d28dd347a4173274689e136cd4dd9c04bbbfb1252201284ba0a",
+      "publishedSha256": "575109a847384eaa6bf6d9a109f10e1868d7fdd8cc2f23e2d6dac2c112a341e9",
+      "bytes": 41675
+    },
+    {
+      "path": "macos-candidate/result.json",
+      "rawSha256": "8d7ee034abd113b5ab4a40c3d6b44e5011050f066a15b6e08e32e3e455b78159",
+      "publishedSha256": "edf81d3f776104492b0f14f83bde9af34cde32f191d5b6d8daeb9646b1c36124",
+      "bytes": 1197
+    },
+    {
+      "path": "macos-candidate/focused.log",
+      "rawSha256": "9c70ebaebde873d0ed3444d7d14bd4c34bbe1a7594b7cc324958d1eacc2aaee0",
+      "publishedSha256": "127a52fcfb5ba6a85d8bf2b89267c3389a06189a9f8aef423f95e99bd77467f7",
+      "bytes": 417
+    },
+    {
+      "path": "macos-candidate/full-check.log",
+      "rawSha256": "2e3ac5bd67e1765c8398b2939df1b30cf6da48a25a7355680446742e1502e249",
+      "publishedSha256": "26ae27a16c8b9091f8f37d45ddb99091bbc156f33db5c469316313a1e42257f8",
+      "bytes": 43657
+    },
+    {
+      "path": "linux-initial/result.json",
+      "rawSha256": "a45193c27e7c8172ac865cb5e8f772427077b7b9f1a1f264fadfd0e622ccb7a6",
+      "publishedSha256": "5d36ae1c7af2ddbcc306a75419c1f4c60b9350a4ff097f0202db4ffd87432e40",
+      "bytes": 5397
+    },
+    {
+      "path": "linux-initial/main-focused.log",
+      "rawSha256": "ad9369ff8ded51f81e18647f0937b10837cdf7f2738d165267f3d531c9482f61",
+      "publishedSha256": "234891aa27c30d7d1eb0c44c07f6e16f52bce3bd9e65208bea523ca2fc66924e",
+      "bytes": 359
+    },
+    {
+      "path": "linux-initial/candidate-focused.log",
+      "rawSha256": "c3e949e28c0f8a54efba866aca894b7362226f774274971e2a39d0e9a90f5992",
+      "publishedSha256": "d609722494ff44f652b652ac6c0dac1ab3e4c758882e6d89ad012f43b4c00ea9",
+      "bytes": 364
+    },
+    {
+      "path": "linux-initial/main-full-check.log",
+      "rawSha256": "4cd88d86b0e9436e124317940bc23179ca05127151640e0294b376003448f315",
+      "publishedSha256": "4cd88d86b0e9436e124317940bc23179ca05127151640e0294b376003448f315",
+      "bytes": 451
+    },
+    {
+      "path": "linux-initial/candidate-full-check.log",
+      "rawSha256": "69a3af39a0844bcc970aaa90423f353e382900abfce7021c03865339f0209dd5",
+      "publishedSha256": "69a3af39a0844bcc970aaa90423f353e382900abfce7021c03865339f0209dd5",
+      "bytes": 456
+    },
+    {
+      "path": "linux-path-corrected/result.json",
+      "rawSha256": "93b079dd1b91a4ecce391d0cf415c31b707881690a474b8183f260c9b8b0266f",
+      "publishedSha256": "807a47d2ab7db6d47188e42eaf2358a5733e9c50da62ead9ce8f1928eb8222c0",
+      "bytes": 4719
+    },
+    {
+      "path": "linux-path-corrected/main-full-check.log",
+      "rawSha256": "dc994b451ac4c0a1c35ea3e657a91573cf15f16a6178dc8247445a3cc65c820e",
+      "publishedSha256": "9c750cc3afa22ccc1a3112ad271d7f2c2a5326defe559a9b995a3d971b9ab86d",
+      "bytes": 34266
+    },
+    {
+      "path": "linux-path-corrected/candidate-full-check.log",
+      "rawSha256": "83b1d57502ef94868729e5bb044d27e144c84ea63de12721ba7ace809768918d",
+      "publishedSha256": "1f20b324b78811568aa3a82dea06eeaa91af3ac88083e95251e40d594eeb426d",
+      "bytes": 34447
+    },
+    {
+      "path": "linux-path-corrected/run-pair.mjs",
+      "rawSha256": "cf6234f81d25131c1682a837ffde386b2ebb0dba96fe7c8e71d8cfec7e9a2860",
+      "publishedSha256": "cf6234f81d25131c1682a837ffde386b2ebb0dba96fe7c8e71d8cfec7e9a2860",
+      "bytes": 3075
+    }
+  ]
+}
