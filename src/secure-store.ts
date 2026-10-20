@@ -41,7 +41,15 @@ export class OSCredentialKeyStore implements CredentialKeyStore {
     })().catch(() => { this.entry = undefined; throw new CredentialStorageError() })
   }
   async read(): Promise<Uint8Array | undefined> {
-    try { return await (await this.getEntry()).getSecret() } catch { throw new CredentialStorageError() }
+    // The 2.1.0 native binding returns null or number[] despite declaring
+    // Uint8Array | undefined. Validate bytes before normalizing its boundary.
+    try {
+      const secret: unknown = await (await this.getEntry()).getSecret()
+      if (secret === null || secret === undefined) return undefined
+      if (secret instanceof Uint8Array) return Buffer.from(secret)
+      if (Array.isArray(secret) && Array.from(secret).every(value => typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 255)) return Buffer.from(secret)
+      throw new CredentialStorageError()
+    } catch { throw new CredentialStorageError() }
   }
   async write(key: Uint8Array): Promise<void> {
     try { await (await this.getEntry()).setSecret(key) } catch { throw new CredentialStorageError() }

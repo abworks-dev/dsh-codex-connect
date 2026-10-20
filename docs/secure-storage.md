@@ -72,7 +72,8 @@ Ordinary authentication rejects a leftover plaintext backup too.
 
 Migration and logout never read or change `~/.codex/auth.json`. Operators should
 not print token-bearing files, paste their contents into chats, or commit them.
-This patch's tests use synthetic credentials and a mocked keyring exclusively.
+The default test suites use synthetic credentials and a mocked keyring. The
+separate opt-in native check below uses only newly created test entries.
 
 ## Recovery and limits
 
@@ -89,10 +90,39 @@ or credentials exposed before migration. Revoke/re-authorize an account if that
 history is a concern. The host process still needs decrypted credentials in
 memory. OS storage protects persistence; it does not remove the plugin's full
 host trust or protect against a compromised authorized host process. Native
-Mac/Windows/Linux credential-store acceptance remains a separate installation
-check; mocked tests do not prove it.
+credential-store acceptance remains a separate platform check; mocked tests do
+not prove it. The macOS result below covers the listed test-owned operations,
+not real-account migration, locked-store behavior, or deployment acceptance.
 
-## Scanner claim under review
+## Native validation (2026-10-20)
+
+The opt-in check creates a random temporary home and independently addressed OS
+entries. It requires explicit consent and never opens a default credential path,
+enumerates existing entries, signs in, or contacts a model:
+
+```sh
+node scripts/check-native-credential-store.mjs --synthetic-owned-entries-only
+```
+
+On macOS arm64 with Node 22.22.3 and `@napi-rs/keyring` 2.1.0, the check passed
+native key write/readback, independent keys, encrypted file persistence, a fresh
+Node process readback, pathname/tamper rejection, migration of test-owned v1
+primary/backup files, and final-account/logout key deletion. Both test entries
+were verified absent afterward, and the temporary home was removed.
+
+This exposed a binding contract mismatch: native `getSecret()` returns `null`
+or `number[]`, while its async declaration advertises `Uint8Array | undefined`.
+The boundary now normalizes absence and validates every array byte before
+conversion. Invalid values still fail closed; missing decryption keys are not
+replaced. The fixture now models the observed native values. Negative-control
+regressions reproduced both failures before the corresponding fixes.
+
+[The acceptance record](reviews/2026-10-20-pr327/README.md) retains failures,
+source hashes and cleanup results as well as the passing run. Windows Credential
+Manager and Linux Secret Service native validation have **not been performed**.
+No real account or existing credential entry was read, migrated or modified.
+
+## Scanner history and current gate
 
 CodeQL alert 31 (`js/insufficient-password-hash`) at the original draft head
 `6be498b074fd3152652869ed090f864d743e9fc1` reports the pathname digest as a
@@ -103,6 +133,9 @@ independent 32-byte OS-store secret returned by `credentialKey`, not this digest
 The added synthetic regression checks locator stability, path isolation,
 independent fresh keys on the same path, and rejection of the locator as an
 AES decryption key. This evidence addresses the specific claim, not a complete
-security audit or native credential-store acceptance. The alert is neither
-dismissed nor suppressed; the independent result check must be evaluated again
-on the updated head and any remaining failure reported explicitly.
+security audit or native credential-store acceptance. The earlier maintainer
+[recorded a specifically authorized false-positive dismissal](https://github.com/franksong2702/dsh-codex-connect/pull/327#issuecomment-6244657842)
+for alert 31 and verified its result check on the then-current head. That
+historical disposition is not approval of subsequent code. No scanner is
+disabled or suppressed by this update; the new head still requires all current
+security checks and an independent review before merge.

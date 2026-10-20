@@ -22,8 +22,8 @@ export class AsyncEntry {
   }
   async getSecret() {
     stats.reads++;
-    if (this.file === undefined) return entries.get(this.id)?.slice();
-    try { return await readFile(this.file); } catch (error) { if (error.code === 'ENOENT') return undefined; throw error; }
+    if (this.file === undefined) { const key = entries.get(this.id); return key === undefined ? null : Array.from(key); }
+    try { return Array.from(await readFile(this.file)); } catch (error) { if (error.code === 'ENOENT') return null; throw error; }
   }
   async setSecret(value) {
     stats.writes++;

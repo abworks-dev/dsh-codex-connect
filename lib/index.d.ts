@@ -1,6 +1,6 @@
 import z from "@deepseek-ai/schemastery";
+import { GenerateOptions, RetryPolicyConfig, StreamChunk } from "@deepseek-ai/dsh-llm";
 import { AuthInteraction, Credential, CredentialInfo, CredentialStore, OAuthCredential } from "@earendil-works/pi-ai";
-import { GenerateOptions, StreamChunk } from "@deepseek-ai/dsh-llm";
 import "@deepseek-ai/dsh-timeout";
 import { Context, Service, Volatile } from "@deepseek-ai/cordis";
 import "@deepseek-ai/dsh-tools";
@@ -22,6 +22,15 @@ interface OpenAICodexPreflightConfig {
   trustedProxyOrigin: string;
   maxDurationMs: number;
 }
+//#endregion
+//#region src/speed-mode-contract.d.ts
+type OpenAICodexSpeedMode = 'standard' | 'fast' | 'ultrafast';
+//#endregion
+//#region src/reasoning-contract.d.ts
+/** Optional profile reasoning policy; model support remains owned by the Host adapter. */
+declare const OPENAI_CODEX_REASONING_EFFORTS: readonly ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
+/** Reasoning levels accepted by the public PiAiAdapter profile. */
+type OpenAICodexReasoningEffort = typeof OPENAI_CODEX_REASONING_EFFORTS[number];
 //#endregion
 //#region src/account-profile.d.ts
 type OpenAICodexAccountProfileSource = 'oauth' | 'generated';
@@ -407,7 +416,7 @@ export declare const IMAGE_GENERATE_TOOL_NAME = "codex_connect_image_generate";
 export declare const COMPATIBILITY_SCHEMA_VERSION: 1;
 export declare const SUPPORTED_NODE_RANGE = "^22.19.0 || >=24.0.0";
 export declare const SUPPORTED_DSH_PLUGIN_API_VERSION = "0.1.7-rc.1";
-export declare const SUPPORTED_DSH_PLUGIN_API_VERSIONS: readonly ["0.1.7-rc.1", "0.1.7-rc.2", "0.2.0-rc.1", "0.2.0-rc.2", "0.2.1-alpha.1", "0.2.1-alpha.2", "0.2.1-alpha.3", "0.2.1-alpha.4", "0.2.1-alpha.5", "0.2.1-rc.1"];
+export declare const SUPPORTED_DSH_PLUGIN_API_VERSIONS: readonly ["0.1.7-rc.1", "0.1.7-rc.2", "0.2.0-rc.1", "0.2.0-rc.2", "0.2.1-alpha.1", "0.2.1-alpha.2", "0.2.1-alpha.3", "0.2.1-alpha.4", "0.2.1-alpha.5", "0.2.1-rc.1", "0.2.1-rc.2"];
 export declare const SUPPORTED_DSH_PLUGIN_API_RANGE: string;
 export declare const SUPPORTED_PI_AI_RANGE = "0.85.1";
 export declare const PI_AI_PACKAGE = "@earendil-works/pi-ai";
@@ -450,7 +459,7 @@ export declare const COMPATIBILITY_CONTRACT: {
   };
   readonly dshPluginApi: {
     readonly version: "0.1.7-rc.1";
-    readonly versions: readonly ["0.1.7-rc.1", "0.1.7-rc.2", "0.2.0-rc.1", "0.2.0-rc.2", "0.2.1-alpha.1", "0.2.1-alpha.2", "0.2.1-alpha.3", "0.2.1-alpha.4", "0.2.1-alpha.5", "0.2.1-rc.1"];
+    readonly versions: readonly ["0.1.7-rc.1", "0.1.7-rc.2", "0.2.0-rc.1", "0.2.0-rc.2", "0.2.1-alpha.1", "0.2.1-alpha.2", "0.2.1-alpha.3", "0.2.1-alpha.4", "0.2.1-alpha.5", "0.2.1-rc.1", "0.2.1-rc.2"];
     readonly packages: readonly ["@deepseek-ai/dsh-agent", "@deepseek-ai/dsh-atomic-write", "@deepseek-ai/dsh-attachment", "@deepseek-ai/dsh-client-ui-chat", "@deepseek-ai/dsh-client-ui-layout", "@deepseek-ai/dsh-client-ui-primitives", "@deepseek-ai/dsh-client-ui-tool", "@deepseek-ai/dsh-compaction", "@deepseek-ai/dsh-home-paths", "@deepseek-ai/dsh-host-webserver", "@deepseek-ai/dsh-llm", "@deepseek-ai/dsh-llm-pi-ai", "@deepseek-ai/dsh-fs", "@deepseek-ai/dsh-session", "@deepseek-ai/dsh-settings", "@deepseek-ai/dsh-timeout", "@deepseek-ai/dsh-tools", "@deepseek-ai/dsh-util-values", "@deepseek-ai/dsh-web"];
   };
   readonly piAi: {
@@ -602,7 +611,6 @@ export declare function parseOpenAICodexUsage(value: unknown): OpenAICodexUsage;
 export declare function readOpenAICodexRateLimits(store: Pick<OpenAICodexCredentialStore, 'captureActiveAccount'>): Promise<OpenAICodexUsage>;
 //#endregion
 //#region src/settings-contract.d.ts
-/** Node-free settings contract shared by the Host plugin and browser card. */
 /** Stable Harness settings namespace owned by this plugin. */
 export declare const OPENAI_CODEX_SETTINGS_NAMESPACE = "llm-openai-codex";
 /** Suggested local HTTP proxy shown by the settings UI; it is never enabled by default. */
@@ -636,6 +644,8 @@ export declare const DEFAULT_OPENAI_CODEX_SEARCH_MAX_OUTPUT_TOKENS = 10000;
 interface OpenAICodexSettingsConfig {
   /** Model ids advertised in selectors; undefined advertises the full catalog. */
   models: string[] | undefined;
+  /** Optional fallback when a request does not specify reasoning effort. */
+  reasoningEffort: OpenAICodexReasoningEffort | undefined;
   /** Route Codex Connect requests through the explicitly configured proxy. */
   enableProxy: boolean;
   /** Credential-free HTTP(S) proxy origin; inactive while enableProxy is false. */
@@ -652,6 +662,10 @@ interface OpenAICodexSettingsConfig {
   enableReserveFallback: boolean;
   /** Default Fast Mode for newly started top-level sessions; existing sessions are unchanged. */
   enableNewSessionFastMode: boolean;
+  /** Explicit new top-level default; omission retains the legacy Fast preference. */
+  newSessionSpeedMode: OpenAICodexSpeedMode | undefined;
+  /** Independent new-subagent default, with the same legacy omission behavior. */
+  newSubagentSpeedMode: OpenAICodexSpeedMode | undefined;
   /** Independent default for newly started subagent sessions. */
   enableNewSubagentFastMode: boolean;
   /** Use provider-native Responses V2 compaction when DSH requests compaction. */
@@ -671,7 +685,10 @@ interface OpenAICodexSettingsConfig {
 }
 export declare const DEFAULT_OPENAI_CODEX_SETTINGS: Readonly<OpenAICodexSettingsConfig>;
 /** Input settings allow null to disable overrides inherited from a lower settings layer. */
-interface OpenAICodexSettingsInput extends Partial<Omit<OpenAICodexSettingsConfig, 'contextWindowOverrides'>> {
+interface OpenAICodexSettingsInput extends Partial<Omit<OpenAICodexSettingsConfig, 'contextWindowOverrides' | 'reasoningEffort' | 'newSessionSpeedMode' | 'newSubagentSpeedMode'>> {
+  reasoningEffort?: OpenAICodexReasoningEffort | null | undefined;
+  newSessionSpeedMode?: OpenAICodexSpeedMode | null | undefined;
+  newSubagentSpeedMode?: OpenAICodexSpeedMode | null | undefined;
   contextWindowOverrides?: Readonly<Record<string, number | null>> | null | undefined;
 }
 /** Fill the schema defaults even when called without Cordis validation. */
@@ -940,6 +957,13 @@ export declare const inject: string[];
 export declare const OPENAI_CODEX_SETTINGS_NS = "llm-openai-codex";
 /** Plain configuration accepted by direct Cordis composition and unit tests. */
 export interface Config {
+  /** Explicit new-session preferences; omitted/null retains the corresponding legacy Fast default. */
+  newSessionSpeedMode?: OpenAICodexSpeedMode | null | undefined;
+  newSubagentSpeedMode?: OpenAICodexSpeedMode | null | undefined;
+  /** Optional fallback effort; explicit request effort wins. Null resets an inherited value. */
+  reasoningEffort?: OpenAICodexReasoningEffort | null | undefined;
+  /** Optional Host model-request retry policy; omission preserves defaults. Reload to change. */
+  retryPolicy?: RetryPolicyConfig | undefined;
   /** Opt-in absolute owner-only directory for local request evidence; never uploads telemetry. Restart to change. */
   requestMetricsDirectory?: string | undefined;
   /** Per-process journal limit; reaching it stops recording with a warning, not model execution. */
@@ -995,6 +1019,10 @@ export interface Config {
 }
 /** Runtime configuration exposes each editable field through Cordis's public Volatile type. */
 export interface VolatileConfig {
+  newSessionSpeedMode: Volatile<OpenAICodexSpeedMode | null | undefined>;
+  newSubagentSpeedMode: Volatile<OpenAICodexSpeedMode | null | undefined>;
+  reasoningEffort: Volatile<OpenAICodexReasoningEffort | null | undefined>;
+  retryPolicy?: RetryPolicyConfig | undefined;
   requestMetricsDirectory?: string | undefined;
   requestMetricsMaxBytes: number;
   oauthTimeoutMs: number;

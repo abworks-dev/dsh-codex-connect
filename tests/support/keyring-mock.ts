@@ -9,7 +9,10 @@ vi.mock('@napi-rs/keyring', () => {
         if (options.linux.store !== 'secret-service') throw new Error('Tests require explicit durable Linux storage')
         this.id = `${service}:${account}`
       }
-      async getSecret(): Promise<Uint8Array | undefined> { return entries.get(this.id)?.slice() }
+      async getSecret(): Promise<number[] | null> {
+        const key = entries.get(this.id)
+        return key === undefined ? null : Array.from(key)
+      }
       async setSecret(key: Uint8Array): Promise<void> { entries.set(this.id, key.slice()) }
       async deleteCredential(): Promise<boolean> { return entries.delete(this.id) }
     },

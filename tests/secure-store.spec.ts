@@ -16,6 +16,39 @@ function memoryKeyStore(): CredentialKeyStore {
 async function filename(): Promise<string> { root = await mkdtemp(join(tmpdir(), 'secure-codex-')); return join(root, 'auth.json') }
 
 describe('OS-protected encrypted storage', () => {
+  it('rejects malformed native key representations without overwriting the entry', async () => {
+    const { AsyncEntry } = await import('@napi-rs/keyring')
+    const read = vi.spyOn(AsyncEntry.prototype, 'getSecret')
+    const write = vi.spyOn(AsyncEntry.prototype, 'setSecret')
+    const keys = new OSCredentialKeyStore(await filename())
+    for (const value of [
+      Array(31).fill(1), Array(32).fill(256), Array(32).fill(-1),
+      Array(32).fill(1.5), Array(32).fill(Number.NaN), Array(32).fill('1'),
+      Array(32), { byteLength: 32, length: 32 }, 'not-a-key',
+    ]) {
+      read.mockResolvedValue(value as unknown as Uint8Array)
+      await expect(credentialKey(keys, true)).rejects.toThrow()
+      expect(write).not.toHaveBeenCalled()
+    }
+  })
+  it('normalizes native null and byte arrays without replacing a missing decryption key', async () => {
+    // @napi-rs/keyring 2.1.0 returns null natively despite its AsyncEntry declaration.
+    const path = await filename()
+    const { AsyncEntry } = await import('@napi-rs/keyring')
+    const write = vi.spyOn(AsyncEntry.prototype, 'setSecret')
+    const keys = new OSCredentialKeyStore(path)
+    expect(await keys.read()).toBeUndefined()
+    await expect(credentialKey(keys, false)).rejects.toThrow('no OS-store key')
+    expect(write).not.toHaveBeenCalled()
+    const key = await credentialKey(keys, true)
+    expect(key).toHaveLength(32)
+    expect(await new OSCredentialKeyStore(path).read()).toEqual(key)
+    expect(write).toHaveBeenCalledOnce()
+    await keys.delete()
+    expect(await keys.read()).toBeUndefined()
+    await expect(credentialKey(keys, false)).rejects.toThrow('no OS-store key')
+    expect(write).toHaveBeenCalledOnce()
+  })
   it('uses the resolved pathname only as an OS-entry locator and generates independent random keys', async () => {
     const path = await filename()
     const first = new OSCredentialKeyStore(path)

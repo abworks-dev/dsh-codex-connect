@@ -11,6 +11,8 @@ import type {} from '@deepseek-ai/cordis-plugin-loader'
 import { randomUUID } from 'node:crypto'
 import { dirname, join } from 'node:path'
 import z from '@deepseek-ai/schemastery'
+import { RetryPolicySchema, resolveRetryPolicy } from '@deepseek-ai/dsh-llm'
+import type { RetryPolicyConfig } from '@deepseek-ai/dsh-llm'
 import { deepEqualJson } from '@deepseek-ai/dsh-util-values'
 import type {} from '@deepseek-ai/dsh-attachment'
 import type {} from '@deepseek-ai/dsh-agent'
@@ -27,6 +29,11 @@ import { OPENAI_CODEX_AUTHORIZATION_TIMEOUT_MS, registerOpenAICodexAuthRoutes } 
 import { registerOpenAICodexProxyRoutes } from './proxy-routes.ts'
 import { OPENAI_CODEX_TRUSTED_ORIGINS_FILENAME, OpenAICodexTrustedOriginsStore } from './trusted-origins.ts'
 import { registerOpenAICodexUpdateRoutes } from './update-routes.ts'
+import { parseOpenAICodexSpeedDefault } from './speed-mode-contract.ts'
+import type { OpenAICodexSpeedMode } from './speed-mode-contract.ts'
+import { resolveOpenAICodexModelCatalog } from './model-discovery.ts'
+import { parseOpenAICodexReasoningEffort } from './reasoning-contract.ts'
+import type { OpenAICodexReasoningEffort } from './reasoning-contract.ts'
 import { registerOpenAICodexModelCatalogRoute } from './model-routes.ts'
 import { registerOpenAICodexOriginalImageRoute } from './image-asset-routes.ts'
 import {
@@ -36,7 +43,7 @@ import {
   parseOpenAICodexVersion,
 } from './update.ts'
 import { CODEX_CONNECT_VERSION } from './version.ts'
-import { FastModeRegistry } from './fast-mode.ts'
+import { createConversationSpeedRegistry } from './conversation-speed.ts'
 import { registerOpenAICodexFastModeDefaults } from './fast-mode-defaults.ts'
 import { assertNoOpenAICodexProviderConflict } from './doctor.ts'
 import { imageGenerateTool } from './image-tool.ts'
@@ -250,6 +257,13 @@ export const OPENAI_CODEX_SETTINGS_NS = OPENAI_CODEX_SETTINGS_NAMESPACE
 
 /** Plain configuration accepted by direct Cordis composition and unit tests. */
 export interface Config {
+  /** Explicit new-session preferences; omitted/null retains the corresponding legacy Fast default. */
+  newSessionSpeedMode?: OpenAICodexSpeedMode | null | undefined
+  newSubagentSpeedMode?: OpenAICodexSpeedMode | null | undefined
+  /** Optional fallback effort; explicit request effort wins. Null resets an inherited value. */
+  reasoningEffort?: OpenAICodexReasoningEffort | null | undefined
+  /** Optional Host model-request retry policy; omission preserves defaults. Reload to change. */
+  retryPolicy?: RetryPolicyConfig | undefined
   /** Opt-in absolute owner-only directory for local request evidence; never uploads telemetry. Restart to change. */
   requestMetricsDirectory?: string | undefined
   /** Per-process journal limit; reaching it stops recording with a warning, not model execution. */
@@ -320,6 +334,13 @@ function parseSettingsContextWindowOverrides(
 }
 
 const configSchema = z.object({
+  newSessionSpeedMode: z.transform(z.union([z.const(undefined), z.const(null), z.string()]), parseOpenAICodexSpeedDefault).volatile(),
+  newSubagentSpeedMode: z.transform(z.union([z.const(undefined), z.const(null), z.string()]), parseOpenAICodexSpeedDefault).volatile(),
+  reasoningEffort: z.transform(z.union([z.const(undefined), z.const(null), z.string()]), parseOpenAICodexReasoningEffort).volatile(),
+  retryPolicy: z.transform(z.union([z.const(undefined), RetryPolicySchema]), value => {
+    resolveRetryPolicy(value, 'dsh-codex-connect retryPolicy')
+    return value
+  }).description('Optional Host model-request retry policy. Omit for existing defaults; reload the plugin after changes. More retries can consume more quota. The Host retry plugin executes this policy; cancellation and request accounting remain Host-owned.'),
   requestMetricsDirectory: z.union([z.const(undefined), z.string()]),
   requestMetricsMaxBytes: z.number().step(1).min(4096).max(64 * 1024 * 1024).default(16 * 1024 * 1024),
   oauthTimeoutMs: z.number().step(1).min(1_000).max(1_800_000).default(OPENAI_CODEX_AUTHORIZATION_TIMEOUT_MS),
@@ -352,6 +373,10 @@ const configSchema = z.object({
 
 /** Runtime configuration exposes each editable field through Cordis's public Volatile type. */
 export interface VolatileConfig {
+  newSessionSpeedMode: Volatile<OpenAICodexSpeedMode | null | undefined>
+  newSubagentSpeedMode: Volatile<OpenAICodexSpeedMode | null | undefined>
+  reasoningEffort: Volatile<OpenAICodexReasoningEffort | null | undefined>
+  retryPolicy?: RetryPolicyConfig | undefined
   requestMetricsDirectory?: string | undefined
   requestMetricsMaxBytes: number
   oauthTimeoutMs: number
@@ -389,6 +414,8 @@ export const Config: z<Config, VolatileConfig> = configSchema
 export function apply(ctx: Context, config: Config | VolatileConfig): void {
   const catalog = openAICodexModelCatalog()
   const current = (): OpenAICodexSettingsInput => Object.fromEntries(Object.entries({
+    newSessionSpeedMode: configValue(config.newSessionSpeedMode), newSubagentSpeedMode: configValue(config.newSubagentSpeedMode),
+    reasoningEffort: configValue(config.reasoningEffort),
     models: configValue(config.models), enableProxy: configValue(config.enableProxy), proxyUrl: configValue(config.proxyUrl),
     contextWindowOverrides: configValue(config.contextWindowOverrides), enableSearch: configValue(config.enableSearch),
     enableReserveFallback: configValue(config.enableReserveFallback), enableNativeCompaction: configValue(config.enableNativeCompaction),
@@ -419,8 +446,9 @@ export function apply(ctx: Context, config: Config | VolatileConfig): void {
   const trustedOrigins = new OpenAICodexTrustedOriginsStore(
     join(dirname(credentials.filename), OPENAI_CODEX_TRUSTED_ORIGINS_FILENAME),
   )
-  const fastMode = new FastModeRegistry()
-  registerOpenAICodexFastModeDefaults(ctx, fastMode, () => resolveOpenAICodexSettings(current()))
+  const fastMode = createConversationSpeedRegistry(ctx)
+  registerOpenAICodexFastModeDefaults(ctx, fastMode, () => resolveOpenAICodexSettings(current()),
+    async () => (await credentials.accounts()).find(account => account.active)?.accountKey)
   const taskDirectory = join(dirname(credentials.filename), 'codex-connect-tasks')
   taskRuntime = new AdaptiveTaskControlRuntime(ctx, {
     directory: taskDirectory,
@@ -463,24 +491,24 @@ export function apply(ctx: Context, config: Config | VolatileConfig): void {
     () => resolveOpenAICodexSettings(current()).enableAutoReview,
     backendRequests,
   )
-  ctx.llm.registerAdapter(
-    [OPENAI_CODEX_PROVIDER],
-    createOpenAICodexAdapter(
-      credentials,
-      () => ctx.get('attachments'),
-      fastMode,
-      () => resolveOpenAICodexSettings(current()).models,
-      proxyManager,
-      resolveProviderProxyUrl,
-      () => resolveOpenAICodexSettings(current()).contextWindowOverrides,
-      reservePermits,
-      () => resolveOpenAICodexSettings(current()).enableNativeCompaction,
-      backendRequests,
-      taskRuntime,
-      () => resolveOpenAICodexSettings(current()).enableImageGeneration,
-      config.preflightActivity,
-    ),
+  const adapter = createOpenAICodexAdapter(
+    credentials,
+    () => ctx.get('attachments'),
+    fastMode,
+    () => resolveOpenAICodexSettings(current()).models,
+    proxyManager,
+    resolveProviderProxyUrl,
+    () => resolveOpenAICodexSettings(current()).contextWindowOverrides,
+    reservePermits,
+    () => resolveOpenAICodexSettings(current()).enableNativeCompaction,
+    backendRequests,
+    taskRuntime,
+    () => resolveOpenAICodexSettings(current()).enableImageGeneration,
+    config.preflightActivity,
+    config.retryPolicy,
+    () => resolveOpenAICodexSettings(current()).reasoningEffort,
   )
+  ctx.llm.registerAdapter([OPENAI_CODEX_PROVIDER], adapter)
   registerImageHandleBridge(ctx, {
     // The bridge rides on the image-generation gate: when GPT Image is on,
     // every route gets selection handles, not just the openai-codex adapter.
@@ -490,7 +518,7 @@ export function apply(ctx: Context, config: Config | VolatileConfig): void {
   // Public catalog/version metadata does not need access to the operator's account or private resources.
   ctx.inject(['webServer'], webCtx => {
     registerOpenAICodexUpdateRoutes(webCtx, { currentVersion: CODEX_CONNECT_VERSION }, trustedOrigins)
-    registerOpenAICodexModelCatalogRoute(webCtx, openAICodexModelCatalog, trustedOrigins)
+    registerOpenAICodexModelCatalogRoute(webCtx, () => resolveOpenAICodexModelCatalog(adapter), trustedOrigins)
   })
   // Protected routes follow Connection's lifetime as well as WebServer's; no unauthenticated fallback.
   ctx.inject(['webServer', 'connection'], webCtx => {

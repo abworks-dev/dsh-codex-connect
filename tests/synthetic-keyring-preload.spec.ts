@@ -17,11 +17,12 @@ it('intercepts native keyring imports and keeps keys only in the fixture process
   const code = `const m = await import('@napi-rs/keyring');
     if (!m.syntheticKeyring) throw new Error('Native binding reached');
     const entry = new m.AsyncEntry('dsh-codex-connect.oauth-encryption-key.v1', 'synthetic', {linux:{store:'secret-service'}});
-    if (await entry.getSecret() !== undefined) throw new Error('Unexpected existing key');
+    if (await entry.getSecret() !== null) throw new Error('Unexpected existing key');
     await entry.setSecret(new Uint8Array(32).fill(7));
-    if ((await entry.getSecret())[0] !== 7) throw new Error('Fixture key lost');
+    const key = await entry.getSecret();
+    if (!Array.isArray(key) || key.length !== 32 || key[0] !== 7) throw new Error('Fixture key lost');
     await entry.deleteCredential();
-    if (await entry.getSecret() !== undefined) throw new Error('Fixture key retained');
+    if (await entry.getSecret() !== null) throw new Error('Fixture key retained');
     console.log(JSON.stringify(globalThis[Symbol.for('codex-connect.synthetic-keyring')]));`
   const child = spawnSync(process.execPath, ['--import', preload, '--input-type=module', '-e', code], {
     env: { ...process.env, DSH_SYNTHETIC_KEYRING: '1' }, encoding: 'utf8', timeout: 5000,
@@ -37,9 +38,9 @@ it('retains only synthetic keys between fresh fixture processes', async () => {
       env: { ...process.env, DSH_SYNTHETIC_KEYRING: '1', DSH_SYNTHETIC_KEYRING_DIRECTORY: root }, encoding: 'utf8', timeout: 5000,
     })
     expect(run('await entry.setSecret(new Uint8Array(32).fill(7));').status).toBe(0)
-    const resumed = run('const key = await entry.getSecret(); if (key?.length !== 32 || key[0] !== 7) throw new Error("Synthetic key lost");')
+    const resumed = run('const key = await entry.getSecret(); if (!Array.isArray(key) || key.length !== 32 || key[0] !== 7) throw new Error("Synthetic key lost");')
     expect(resumed.status).toBe(0)
     expect(run('await entry.deleteCredential();').status).toBe(0)
-    expect(run('if (await entry.getSecret() !== undefined) throw new Error("Synthetic key retained");').status).toBe(0)
+    expect(run('if (await entry.getSecret() !== null) throw new Error("Synthetic key retained");').status).toBe(0)
   } finally { await rm(root, { recursive: true, force: true }) }
 })
