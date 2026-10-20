@@ -7,6 +7,11 @@ earlier cloud full-suite writer-lock timeout has not been causally explained.
 No retry-until-green, worker/concurrency reduction or production timeout change
 was used. This report preserves the failures and the limits of the comparison.
 
+The continuation tracks the unresolved timeout separately in
+[issue #376](https://github.com/franksong2702/dsh-codex-connect/issues/376).
+No #358 suite was rerun, no production code changed, and the issue is not a
+merge waiver.
+
 ## Exact source identities
 
 | Role | Commit |
