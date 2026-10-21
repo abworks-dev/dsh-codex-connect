@@ -1,5 +1,7 @@
 # ChatGPT maintenance handoff execution — 2026-10-20
 
+Later evidence: [2026-10-21 continuation](../2026-10-21-maintenance/README.md) records bounded writer-lock timing and actual locked Linux Secret Service acceptance, with the prior failed fixture attempt and remaining review gates preserved.
+
 This record follows the [original handoff index](https://github.com/franksong2702/dsh-codex-connect/blob/0b5dd24f89d1ba4ced989004c0b02ab6edce2365/docs/reviews/2026-10-20-chatgpt-handoff/README.md)
 and the repository's `AGENTS.md` / [maintenance scope](../../maintenance-scope.md).
 
