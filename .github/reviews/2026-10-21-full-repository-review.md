@@ -1,0 +1,112 @@
+# Full repository review — 2026-10-21
+
+Review-only record. This file changes no product source, generated bundle, lockfile, workflow or default. It lists findings and proposed dispositions; each proposal needs its own scoped change and maintainer decision. Nothing here reopens frozen tracks from [the maintenance scope](../../docs/maintenance-scope.md).
+
+## Identity and executed checks
+
+- Source: `main` at `e5579b71339ba932dec7dfba497fc97df8fbf124`, version `0.2.0-alpha.9`.
+- Runtime: Linux x64 cloud container, Node 22.22.0, pnpm 10.30.3. Synthetic fixtures only; no live account, model call, real credential, installed Host or service was used.
+- `pnpm --config.minimum-release-age=0 install --frozen-lockfile`: exit 0.
+- `pnpm run lint`: exit 0. `pnpm run typecheck`: exit 0.
+- `pnpm run test`: exit 0, **169 files, 2,257 passed, 2 skipped**. The #376 writer-lock timeout did not occur in this single run. That does not count as evidence either way.
+- `pnpm audit`: **3 advisories (1 high, 2 moderate)**, all on `vite@8.2.1` (details below).
+- `npm pack --dry-run --json`: 177 entries, 1,661,858 bytes packed / 3,695,100 unpacked. 158 of the entries are under `docs/` (2.1 MB).
+- GitHub state read on 2026-10-21: 3 open issues (#378, #376, #65) and 5 open PRs (#380, #377, #375, #358, #327). Without an authenticated security API, the code-scanning alert was identified from the readback saved in #375 (`docs/reviews/2026-10-20-maintenance/pr327-installed-native/github-readback.json`). The maintainer should still confirm the exact alert location on the Security tab.
+
+## 中文摘要
+
+| # | 优先级 | 问题 | 建议 |
+| --- | --- | --- | --- |
+| F1 | 高（默认关闭的功能） | `main` 上 Auto-review 只要远端模型返回 `allow` 就直接 `allowed-once`，即使模型自己评为 `high`/`critical`；也没有本地敏感目标（如 `.openai-codex-auth.json`）检查 | 把 #327 中与密钥存储无关的审批门禁加固拆成独立小 PR 先合入 |
+| F2 | 中（仅开发依赖） | Security 页的 3 个漏洞：`vite@8.2.1`（launch-editor 相关 GHSA，1 high + 2 moderate），仅测试/浏览器测试链使用，不进入发布包 | 合并 Dependabot #377（升级到 8.3.4，必需检查已通过） |
+| F3 | 中（CodeQL） | 告警 32 `js/shell-command-injection-from-environment`：`scripts/bounded-command.mjs` 在 Windows 上把来自环境（`ComSpec`、`tmpdir()` 推导的路径）的值拼接成 `cmd /d /s /c` 命令行 | 仅限 CI/开发脚本，不随包发布。建议改为直接用 `process.execPath` 运行 JS 入口，避免经过 `cmd`；若暂不改代码，以 "used in tests" 理由附证据关闭 |
+| F4 | 中 | `package.json` 的 `files` 包含整个 `docs/`，发布包含 109 个 experiments/agent-notes 内部文件；#375 若合并，会再把 `docs/reviews/` 证据（约 3.5 万行）带进 npm 包 | 改为显式白名单，或排除 `docs/experiments`、`docs/agent-notes`、`docs/reviews`，并在 `check-pack.mjs` 中断言 |
+| F5 | 低（文档） | 回环信任：本机 peer + 回环 Host 即视为可信；若用户在本机放反向代理（如 Tailscale Serve/nginx 转发 `Host: localhost`），远端浏览器会继承信任（仍需 Host 自身认证） | 在 SECURITY/INSTALL 中写明不要以回环 Host 头反代 |
+| F6 | 维护 | #376 锁超时机制：释放锁不唤醒等待者，固定退避造成空档 | 在插件内对同一文件加进程内异步队列，再获取文件锁；跨进程语义不变。属于生产改动，需单独评审 |
+| F7 | 流程 | #380 来自 fork，无任何 check run；#358/#327/#375 为 draft 且各自等待独立决定 | 见下方 PR 处置表 |
+
+## Findings
+
+### F1 — Auto-review allows on the remote verdict alone (main)
+
+`src/auto-review.ts:72-75` on main:
+
+```ts
+const denied = result.assessment.outcome === 'deny'
+...
+if (!denied) return 'allowed-once'
+```
+
+The model's own `risk_level` and `user_authorization` are logged and then ignored. Today an assessment of `{ outcome: 'allow', risk_level: 'critical', user_authorization: 'unknown' }` auto-approves the action. The prompt tells the model to deny critical actions, but a prompt is not an authorization boundary (see AGENTS.md: "Prompts cannot grant authority"). The reviewer also reads transcript content that may contain prompt injection. On main there is also no local sensitive-target check: a read of `.openai-codex-auth.json` or its `.v1-backup` inside the workspace goes to the remote reviewer, and its `allow` is final. #327's body records the same gap. Its negative control showed two synthetic reads returning `allowed-once`.
+
+Exposure is limited: Auto-review is off by default (`enableAutoReview: false`, disclosure acknowledgement required), and Host execution-time permissions still apply. It is still a published feature, and the fix already exists.
+
+**Proposal.** Split #327's approval-gate changes (`src/auto-review.ts`, `src/auto-review-contract.ts`, `src/auto-review-backend.ts`, their tests) into a separate small PR. They don't depend on keyring storage. They include:
+- a local risk floor (no automatic allow for `high`/`critical`, or for `unknown` authorization);
+- sensitive-target delegation to human approval before contacting the reviewer;
+- revalidation after the remote verdict;
+- cancellation checks.
+
+Merge that first. The keyring migration stays in draft #327 until native acceptance gaps close. Minimum regression: an injected backend returning `allow` + `critical` must end in `next()`, and so must `allow` for a read of the credential file.
+
+### F2 — Dependabot: vite 8.2.1 (3 advisories)
+
+`pnpm audit` reports GHSA-587h-7wmj-h5pm (high), GHSA-698v-4r3x-3vcv (moderate) and GHSA-r825-w8mm-5pxw (moderate). All three are in `launch-editor` via `vite >=8.2.0 <=8.2.3` (Windows command handling), and all are patched in `>=8.2.4`. The only path is `@vitest/browser-playwright > @vitest/mocker > vite`, so vite is a dev/test dependency only. `lib/` and the packed artifact don't contain it, and installed users are unaffected. The 2026-10-20 readback in #375 had zero open Dependabot entries, so these advisories are newer.
+
+**Proposal.** Merge #377 (`vite 8.2.1 → 8.3.4`). Lockfile-only change, one vite version in the tree after it. All six CI jobs and dependency-review passed on its head. CodeQL is `neutral`, which is expected for a lockfile-only diff.
+
+### F3 — CodeQL alert 32, `js/shell-command-injection-from-environment` (medium)
+
+`scripts/bounded-command.mjs:26-38` builds a `cmd.exe /d /s /c "<command> <args>"` line on Windows for `.cmd`/`.bat` targets. The executable is `process.env.ComSpec`, and callers pass paths derived from the environment. For example, `scripts/check-dsh-install.mjs:197,260` runs `<tmpdir()>/…/node_modules/.bin/dsh.cmd`, where `tmpdir()` comes from `TEMP`/`TMP`. That env-to-shell flow is what this rule reports. The escaping mirrors `cross-spawn`'s, and these scripts run only in CI/development. `scripts/` is excluded from the package and `check-pack.mjs` forbids it.
+
+**Proposal**, choose one:
+1. **Preferred (removes the class):** for npm/pnpm/dsh, resolve the package's JS entry (`npm-cli.js`, the `dsh` package `bin` from its `package.json`) and spawn `process.execPath` with it directly. That avoids `cmd.exe`, so `resolveCommandInvocation` is no longer needed for those callers. Keep `check-dsh-next-contract.mjs` covering any remaining `.cmd` path.
+2. **If no code change is wanted now:** dismiss as "Used in tests" with a comment linking this record. CI-only scope, no network-controlled input, escaping equivalent to cross-spawn. That needs explicit maintainer authorization, as alert 31 had.
+
+### F4 — npm artifact ships internal evidence
+
+`package.json:80` lists `"docs"` with a single exclusion. The current tarball already contains 109 files under `docs/experiments` and `docs/agent-notes`: archived research, handoffs and acceptance plans, frozen per the maintenance scope. #375 adds `docs/reviews/2026-10-2x-maintenance/**`, including sanitized logs and GitHub readbacks. If it merges unchanged, that material would be published to npm as well. `check-pack.mjs` has no assertion against it.
+
+**Proposal.** Switch `files` to an explicit list of user-facing docs: `docs/README.zh.md`, `docs/reference*.md`, `docs/auto-review*.md`, `docs/preflight-activity*.md`, `docs/request-metrics*.md`, `docs/runtime-identity.md`, `docs/VERSIONING.zh.md`, `docs/licenses/**`, `docs/assets/**` (if referenced), `docs/release-notes/**` (if referenced). Alternatively add `!docs/experiments`, `!docs/agent-notes`, `!docs/reviews`. Add a forbidden-path assertion in `check-pack.mjs`, check that README/INSTALL links resolve to packed files or to GitHub URLs, and regenerate any reference hashes. Do this before or together with merging #375.
+
+### F5 — Loopback trust behind a local reverse proxy (documentation)
+
+`src/auth-routes.ts:469` trusts any request whose socket peer is loopback and whose `Host` is loopback. Host-owned authentication (`harnessHttpRejection`) runs first, and cross-site/Origin checks still apply, so this isn't a bypass on its own. But a same-machine reverse proxy that forwards with `Host: localhost` makes every proxied client look local to the OAuth routes.
+
+**Proposal.** Documentation only: SECURITY.md/INSTALL.md should say that remote access must go through `trust-origin` with the real external origin, and that a proxy must not rewrite `Host` to loopback. No code change proposed.
+
+### F6 — #376 writer-lock contention mechanism
+
+#375's diagnostics show synchronized fixed backoff (20→40→80→160→200 ms) with no wake-up on release: about 0.13 s of total lock hold against about 1.59 s of gaps for 12 writers. All 12 contenders in the failing test are in one process. The plugin could serialize same-file updates in-process (a promise chain keyed by the resolved filename) before calling `withFileLock`. Intra-process contenders would then never poll the file lock, while cross-process exclusion stays with `@deepseek-ai/dsh-atomic-write`. The same helper would apply to `store.ts`, `trusted-origins.ts` and `adaptive-task-store.ts`.
+
+This is a production change and lies outside #376's "no production change without separate evidence" rule. It is a candidate for a separately reviewed PR, not an attribution of the historical cloud failure. Deadlines, concurrency and the test's assertions stay unchanged.
+
+### Reviewed without findings
+
+- `src/public-http.ts` (remote image SSRF guard): resolves and rejects non-public addresses, pins the socket lookup per hop, revalidates each redirect, bounds bytes and time. IPv4-mapped, NAT64, Teredo and 6to4 addresses fall outside the allowed global range. One note: an `https → http` redirect is allowed, which is consistent with accepting `http:` sources at all.
+- `src/settings-contract.ts` proxy URL: rejects credentials, paths and non-HTTP(S) schemes.
+- `src/trusted-origins.ts`, `src/store.ts`: owner-only mode checks, strict schema, no secret echo in errors, atomic locked writes. Plaintext-at-rest is the known gap addressed by #327.
+- `src/image-asset-routes.ts` / `image-assets-contract.ts`: id and filename patterns prevent traversal and header injection; `nosniff` + `attachment`.
+- `src/bin.ts` browser opener: HTTPS only, argument vector without a shell.
+- `src/client/OpenAICodexUpdateNotice.tsx`: no `dangerouslySetInnerHTML`; links restricted to `https:`.
+- Workflows: every third-party action pinned to a full SHA; `permissions: contents: read` by default; write scopes only in release/canary jobs; no `pull_request_target`.
+
+## Open PR dispositions (proposals)
+
+| PR | State read | Proposal |
+| --- | --- | --- |
+| #377 vite 8.3.4 | Ready, required checks green | Merge (fixes F2). |
+| #380 speed menu (fork, closes #378) | Not draft, `blocked`, **zero check runs** on `46cd71a` | Approve the fork workflow run so CI produces exact-head evidence, then review. It's a UI-only change in an "existing maintenance only" surface (no new persisted setting), so a maintainer scope decision is required before merge. |
+| #327 keyring storage + approval gates | Draft, 10/10 checks green, independent review COMMENTED | Split the approval-gate part out (F1) and merge it first. Keep keyring migration draft until the listed native gaps are covered or explicitly accepted. |
+| #358 test cleanup drain | Draft, hold per #376 | Test-only and correct on its own (it stops cleanup racing live writers). Consider recording the acceptance decision in #376 separately from the root cause, so the test's ENOTEMPTY masking is fixed even while the timeout stays unattributed. |
+| #375 evidence docs | Draft, 35,695 additions | Resolve F4 before merging, or move the evidence under `.github/reviews/` (not packed). |
+
+## Open issues
+
+- **#378**: addressed by #380's proposal. Needs a scope decision (hide vs. compact menu).
+- **#376**: F6 offers a candidate mechanism fix. The open attribution checklist items are unchanged.
+- **#65**: no new evidence from this review. The two maintenance items remain open.
+
+## Limits
+
+This is a static, single-pass review plus one local run of the checks named above. It didn't cover the frozen Adaptive Task modules in depth, native compaction replay correctness, the browser suite (`pnpm run test:browser`), the DSH install matrix, Windows, or any installed/running Host. No GitHub setting, alert, PR or issue was changed by this review.
