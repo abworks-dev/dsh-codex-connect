@@ -14,7 +14,7 @@ The findings below are the original 2026-10-21 review text. This section records
 | F4 npm artifact | **Merged** as #383 → `2e727abaa4e929a94f4db8b62abeeeae4ffb229d`. Excludes `docs/agent-notes`, `docs/experiments`, `docs/reviews`; `check-pack.mjs` now fails if any is packed. Not released. | Pack: 177 → 68 entries (3,712,997 → 2,846,347 unpacked bytes). The negative control without the exclusions failed with exit 1. CI 10/10 on `ed22270`. |
 | F5 loopback/proxy docs | **Open, no change.** | — |
 | F6 writer-lock queue | **Open, no change.** It still needs separately reviewed evidence (#376). | — |
-| #327 keyring storage | **Updated, still draft.** `main` merged in with a normal merge commit (`a297fa6` → `2482e59`), no rebase/force. The Auto-review files now match `main`; the remaining diff is the keyring change only (49 files). | Local `pnpm run check` on `2482e59`: 2,318 passed / 2 skipped. CI: 9/10 passed. `validate (22.19.0)` failed in `check-adaptive-task-matrix.mjs` on `TypeError: fetch failed` (npm registry request) after all tests had passed. One rerun was in progress at the time of writing. |
+| #327 keyring storage | **Updated, still draft.** `main` merged in with a normal merge commit (`a297fa6` → `2482e59`), no rebase/force. The Auto-review files now match `main`; the remaining diff is the keyring change only (49 files). | Local `pnpm run check` on `2482e59`: 2,318 passed / 2 skipped. CI: first run 9/10. `validate (22.19.0)` failed in `check-adaptive-task-matrix.mjs` on `TypeError: fetch failed` (npm registry request) after all tests had passed. Its single rerun passed at 2026-10-22 01:03 UTC, so CI is **10/10** on `2482e59`. The branch is now `behind` `main` by #383 (packaging only); it was not updated again. |
 | #375, #380, #358 | **Unchanged.** #375 can now merge without its evidence shipping to npm. #380 still has no CI (fork workflow approval needed). #358 remains on hold per #376. | — |
 
 ## Identity and executed checks
@@ -40,7 +40,7 @@ The findings below are the original 2026-10-21 review text. This section records
 | F4 | 中 | `package.json` 的 `files` 包含整个 `docs/`，发布包含 109 个 experiments/agent-notes 内部文件；#375 若合并，会再把 `docs/reviews/` 证据（约 3.5 万行）带进 npm 包 | 改为显式白名单，或排除 `docs/experiments`、`docs/agent-notes`、`docs/reviews`，并在 `check-pack.mjs` 中断言 | 已合并 #383（`2e727ab`），包内文件 177 → 68 |
 | F5 | 低（文档） | 回环信任：本机 peer + 回环 Host 即视为可信；若用户在本机放反向代理（如 Tailscale Serve/nginx 转发 `Host: localhost`），远端浏览器会继承信任（仍需 Host 自身认证） | 在 SECURITY/INSTALL 中写明不要以回环 Host 头反代 | 未处理 |
 | F6 | 维护 | #376 锁超时机制：释放锁不唤醒等待者，固定退避造成空档 | 在插件内对同一文件加进程内异步队列，再获取文件锁；跨进程语义不变。属于生产改动，需单独评审 | 未处理 |
-| F7 | 流程 | #380 来自 fork，无任何 check run；#358/#327/#375 为 draft 且各自等待独立决定 | 见下方 PR 处置表 | #327 已合并 main，现仅含 keyring 改动，仍为 draft；其余未变 |
+| F7 | 流程 | #380 来自 fork，无任何 check run；#358/#327/#375 为 draft 且各自等待独立决定 | 见下方 PR 处置表 | #327 已合并 main，现仅含 keyring 改动，CI 10/10（一次 registry 网络失败重跑后通过），仍为 draft；其余未变 |
 
 ## Findings
 
