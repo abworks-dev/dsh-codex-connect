@@ -2,6 +2,21 @@
 
 Review-only record. This file changes no product source, generated bundle, lockfile, workflow or default. It lists findings and proposed dispositions; each proposal needs its own scoped change and maintainer decision. Nothing here reopens frozen tracks from [the maintenance scope](../../docs/maintenance-scope.md).
 
+## Outcomes — 2026-10-22
+
+The findings below are the original 2026-10-21 review text. This section records what was actually done afterwards, with maintainer authorization for each merge. "Merged" means on `main`, **not released**: no npm version was published, so installed users get none of these changes until the next release. No security alert was dismissed and no repository setting was changed.
+
+| Item | Outcome | Evidence |
+| --- | --- | --- |
+| F1 Auto-review gates | **Merged** as #382 → `8f225049da02067dea1c07646b03bff7b8fbc1e2`. #327's Auto-review source, tests and docs taken byte-identical; `lib/` rebuilt. Not released. | Local `pnpm run check`: 2,300 passed / 2 skipped. A negative control with main's old `auto-review.ts` failed the new gate tests. CI 10/10 on the head that merged, `6b032f3` (main merged in). |
+| F2 vite advisories | **Merged** #377 → `44652a556682f31ca5529476315611320afcfa83` (vite 8.2.1 → 8.3.4, lockfile only). | Required checks green on `d2b6c7e`. Dependabot alert closure depends on GitHub's re-scan and was not read back in this session. |
+| F3 CodeQL alert 32 | **Open, no change.** Neither the code change nor a dismissal was authorized. | — |
+| F4 npm artifact | **Merged** as #383 → `2e727abaa4e929a94f4db8b62abeeeae4ffb229d`. Excludes `docs/agent-notes`, `docs/experiments`, `docs/reviews`; `check-pack.mjs` now fails if any is packed. Not released. | Pack: 177 → 68 entries (3,712,997 → 2,846,347 unpacked bytes). The negative control without the exclusions failed with exit 1. CI 10/10 on `ed22270`. |
+| F5 loopback/proxy docs | **Open, no change.** | — |
+| F6 writer-lock queue | **Open, no change.** It still needs separately reviewed evidence (#376). | — |
+| #327 keyring storage | **Updated, still draft.** `main` merged in with a normal merge commit (`a297fa6` → `2482e59`), no rebase/force. The Auto-review files now match `main`; the remaining diff is the keyring change only (49 files). | Local `pnpm run check` on `2482e59`: 2,318 passed / 2 skipped. CI: 9/10 passed. `validate (22.19.0)` failed in `check-adaptive-task-matrix.mjs` on `TypeError: fetch failed` (npm registry request) after all tests had passed. One rerun was in progress at the time of writing. |
+| #375, #380, #358 | **Unchanged.** #375 can now merge without its evidence shipping to npm. #380 still has no CI (fork workflow approval needed). #358 remains on hold per #376. | — |
+
 ## Identity and executed checks
 
 - Source: `main` at `e5579b71339ba932dec7dfba497fc97df8fbf124`, version `0.2.0-alpha.9`.
@@ -15,15 +30,17 @@ Review-only record. This file changes no product source, generated bundle, lockf
 
 ## 中文摘要
 
-| # | 优先级 | 问题 | 建议 |
-| --- | --- | --- | --- |
-| F1 | 高（默认关闭的功能） | `main` 上 Auto-review 只要远端模型返回 `allow` 就直接 `allowed-once`，即使模型自己评为 `high`/`critical`；也没有本地敏感目标（如 `.openai-codex-auth.json`）检查 | 把 #327 中与密钥存储无关的审批门禁加固拆成独立小 PR 先合入 |
-| F2 | 中（仅开发依赖） | Security 页的 3 个漏洞：`vite@8.2.1`（launch-editor 相关 GHSA，1 high + 2 moderate），仅测试/浏览器测试链使用，不进入发布包 | 合并 Dependabot #377（升级到 8.3.4，必需检查已通过） |
-| F3 | 中（CodeQL） | 告警 32 `js/shell-command-injection-from-environment`：`scripts/bounded-command.mjs` 在 Windows 上把来自环境（`ComSpec`、`tmpdir()` 推导的路径）的值拼接成 `cmd /d /s /c` 命令行 | 仅限 CI/开发脚本，不随包发布。建议改为直接用 `process.execPath` 运行 JS 入口，避免经过 `cmd`；若暂不改代码，以 "used in tests" 理由附证据关闭 |
-| F4 | 中 | `package.json` 的 `files` 包含整个 `docs/`，发布包含 109 个 experiments/agent-notes 内部文件；#375 若合并，会再把 `docs/reviews/` 证据（约 3.5 万行）带进 npm 包 | 改为显式白名单，或排除 `docs/experiments`、`docs/agent-notes`、`docs/reviews`，并在 `check-pack.mjs` 中断言 |
-| F5 | 低（文档） | 回环信任：本机 peer + 回环 Host 即视为可信；若用户在本机放反向代理（如 Tailscale Serve/nginx 转发 `Host: localhost`），远端浏览器会继承信任（仍需 Host 自身认证） | 在 SECURITY/INSTALL 中写明不要以回环 Host 头反代 |
-| F6 | 维护 | #376 锁超时机制：释放锁不唤醒等待者，固定退避造成空档 | 在插件内对同一文件加进程内异步队列，再获取文件锁；跨进程语义不变。属于生产改动，需单独评审 |
-| F7 | 流程 | #380 来自 fork，无任何 check run；#358/#327/#375 为 draft 且各自等待独立决定 | 见下方 PR 处置表 |
+"已合并"指已进入 `main`，**尚未发布**到 npm。
+
+| # | 优先级 | 问题 | 建议 | 实际处理（2026-10-22） |
+| --- | --- | --- | --- | --- |
+| F1 | 高（默认关闭的功能） | `main` 上 Auto-review 只要远端模型返回 `allow` 就直接 `allowed-once`，即使模型自己评为 `high`/`critical`；也没有本地敏感目标（如 `.openai-codex-auth.json`）检查 | 把 #327 中与密钥存储无关的审批门禁加固拆成独立小 PR 先合入 | 已合并 #382（`8f22504`） |
+| F2 | 中（仅开发依赖） | Security 页的 3 个漏洞：`vite@8.2.1`（launch-editor 相关 GHSA，1 high + 2 moderate），仅测试/浏览器测试链使用，不进入发布包 | 合并 Dependabot #377（升级到 8.3.4，必需检查已通过） | 已合并 #377（`44652a5`）；告警关闭需等 GitHub 重新扫描，本次未核实 |
+| F3 | 中（CodeQL） | 告警 32 `js/shell-command-injection-from-environment`：`scripts/bounded-command.mjs` 在 Windows 上把来自环境（`ComSpec`、`tmpdir()` 推导的路径）的值拼接成 `cmd /d /s /c` 命令行 | 仅限 CI/开发脚本，不随包发布。建议改为直接用 `process.execPath` 运行 JS 入口，避免经过 `cmd`；若暂不改代码，以 "used in tests" 理由附证据关闭 | 未处理，告警仍开放 |
+| F4 | 中 | `package.json` 的 `files` 包含整个 `docs/`，发布包含 109 个 experiments/agent-notes 内部文件；#375 若合并，会再把 `docs/reviews/` 证据（约 3.5 万行）带进 npm 包 | 改为显式白名单，或排除 `docs/experiments`、`docs/agent-notes`、`docs/reviews`，并在 `check-pack.mjs` 中断言 | 已合并 #383（`2e727ab`），包内文件 177 → 68 |
+| F5 | 低（文档） | 回环信任：本机 peer + 回环 Host 即视为可信；若用户在本机放反向代理（如 Tailscale Serve/nginx 转发 `Host: localhost`），远端浏览器会继承信任（仍需 Host 自身认证） | 在 SECURITY/INSTALL 中写明不要以回环 Host 头反代 | 未处理 |
+| F6 | 维护 | #376 锁超时机制：释放锁不唤醒等待者，固定退避造成空档 | 在插件内对同一文件加进程内异步队列，再获取文件锁；跨进程语义不变。属于生产改动，需单独评审 | 未处理 |
+| F7 | 流程 | #380 来自 fork，无任何 check run；#358/#327/#375 为 draft 且各自等待独立决定 | 见下方 PR 处置表 | #327 已合并 main，现仅含 keyring 改动，仍为 draft；其余未变 |
 
 ## Findings
 
@@ -93,13 +110,13 @@ This is a production change and lies outside #376's "no production change withou
 
 ## Open PR dispositions (proposals)
 
-| PR | State read | Proposal |
-| --- | --- | --- |
-| #377 vite 8.3.4 | Ready, required checks green | Merge (fixes F2). |
-| #380 speed menu (fork, closes #378) | Not draft, `blocked`, **zero check runs** on `46cd71a` | Approve the fork workflow run so CI produces exact-head evidence, then review. It's a UI-only change in an "existing maintenance only" surface (no new persisted setting), so a maintainer scope decision is required before merge. |
-| #327 keyring storage + approval gates | Draft, 10/10 checks green, independent review COMMENTED | Split the approval-gate part out (F1) and merge it first. Keep keyring migration draft until the listed native gaps are covered or explicitly accepted. |
-| #358 test cleanup drain | Draft, hold per #376 | Test-only and correct on its own (it stops cleanup racing live writers). Consider recording the acceptance decision in #376 separately from the root cause, so the test's ENOTEMPTY masking is fixed even while the timeout stays unattributed. |
-| #375 evidence docs | Draft, 35,695 additions | Resolve F4 before merging, or move the evidence under `.github/reviews/` (not packed). |
+| PR | State read (2026-10-21) | Proposal | Outcome (2026-10-22) |
+| --- | --- | --- | --- |
+| #377 vite 8.3.4 | Ready, required checks green | Merge (fixes F2). | Merged `44652a5`. |
+| #380 speed menu (fork, closes #378) | Not draft, `blocked`, **zero check runs** on `46cd71a` | Approve the fork workflow run so CI produces exact-head evidence, then review. It's a UI-only change in an "existing maintenance only" surface (no new persisted setting), so a maintainer scope decision is required before merge. | Unchanged; awaiting workflow approval and the scope decision. |
+| #327 keyring storage + approval gates | Draft, 10/10 checks green, independent review COMMENTED | Split the approval-gate part out (F1) and merge it first. Keep keyring migration draft until the listed native gaps are covered or explicitly accepted. | Gates split out and merged as #382. `main` merged into #327 (`2482e59`). Keyring-only diff, still draft. CI as in Outcomes. |
+| #358 test cleanup drain | Draft, hold per #376 | Test-only and correct on its own (it stops cleanup racing live writers). Consider recording the acceptance decision in #376 separately from the root cause, so the test's ENOTEMPTY masking is fixed even while the timeout stays unattributed. | Unchanged. |
+| #375 evidence docs | Draft, 35,695 additions | Resolve F4 before merging, or move the evidence under `.github/reviews/` (not packed). | Unchanged. The F4 precondition is met by #383. |
 
 ## Open issues
 
@@ -109,4 +126,4 @@ This is a production change and lies outside #376's "no production change withou
 
 ## Limits
 
-This is a static, single-pass review plus one local run of the checks named above. It didn't cover the frozen Adaptive Task modules in depth, native compaction replay correctness, the browser suite (`pnpm run test:browser`), the DSH install matrix, Windows, or any installed/running Host. No GitHub setting, alert, PR or issue was changed by this review.
+This is a static, single-pass review plus one local run of the checks named above. It didn't cover the frozen Adaptive Task modules in depth, native compaction replay correctness, the browser suite (`pnpm run test:browser`), the DSH install matrix, Windows, or any installed/running Host. The review itself changed no GitHub setting, alert, PR or issue. The follow-up merges, the #327 branch update, its comments and the one CI rerun listed under Outcomes were separately authorized by the maintainer. None of them was a release, a live-account or Host acceptance, or an alert dismissal.
