@@ -9,7 +9,7 @@ The findings below are the original 2026-10-21 review text. This section records
 | Item | Outcome | Evidence |
 | --- | --- | --- |
 | F1 Auto-review gates | **Merged** as #382 → `8f225049da02067dea1c07646b03bff7b8fbc1e2`. #327's Auto-review source, tests and docs taken byte-identical; `lib/` rebuilt. Not released. | Local `pnpm run check`: 2,300 passed / 2 skipped. A negative control with main's old `auto-review.ts` failed the new gate tests. CI 10/10 on the head that merged, `6b032f3` (main merged in). |
-| F2 vite advisories | **Merged** #377 → `44652a556682f31ca5529476315611320afcfa83` (vite 8.2.1 → 8.3.4, lockfile only). | Required checks green on `d2b6c7e`. Dependabot alert closure depends on GitHub's re-scan and was not read back in this session. |
+| F2 vite advisories | **Merged** #377 → `44652a556682f31ca5529476315611320afcfa83` (vite 8.2.1 → 8.3.4, lockfile only). | Required checks green on `d2b6c7e`. `pnpm audit` on `main` `2e727ab` no longer reports the vite advisories. It reports **2 new moderate advisories** instead, on dev-only `@vitest/mocker` 4.1.11 via `@vitest/browser-playwright`: GHSA-qxg6-89mg-rqv8 and GHSA-xp26-3454-mjgp, both patched in 4.1.12. GitHub's push notice also reported 2 moderate on the default branch. No Dependabot PR existed at the time of writing; they are not fixed here. |
 | F3 CodeQL alert 32 | **Open, no change.** Neither the code change nor a dismissal was authorized. | — |
 | F4 npm artifact | **Merged** as #383 → `2e727abaa4e929a94f4db8b62abeeeae4ffb229d`. Excludes `docs/agent-notes`, `docs/experiments`, `docs/reviews`; `check-pack.mjs` now fails if any is packed. Not released. | Pack: 177 → 68 entries (3,712,997 → 2,846,347 unpacked bytes). The negative control without the exclusions failed with exit 1. CI 10/10 on `ed22270`. |
 | F5 loopback/proxy docs | **Open, no change.** | — |
@@ -35,7 +35,7 @@ The findings below are the original 2026-10-21 review text. This section records
 | # | 优先级 | 问题 | 建议 | 实际处理（2026-10-22） |
 | --- | --- | --- | --- | --- |
 | F1 | 高（默认关闭的功能） | `main` 上 Auto-review 只要远端模型返回 `allow` 就直接 `allowed-once`，即使模型自己评为 `high`/`critical`；也没有本地敏感目标（如 `.openai-codex-auth.json`）检查 | 把 #327 中与密钥存储无关的审批门禁加固拆成独立小 PR 先合入 | 已合并 #382（`8f22504`） |
-| F2 | 中（仅开发依赖） | Security 页的 3 个漏洞：`vite@8.2.1`（launch-editor 相关 GHSA，1 high + 2 moderate），仅测试/浏览器测试链使用，不进入发布包 | 合并 Dependabot #377（升级到 8.3.4，必需检查已通过） | 已合并 #377（`44652a5`）；告警关闭需等 GitHub 重新扫描，本次未核实 |
+| F2 | 中（仅开发依赖） | Security 页的 3 个漏洞：`vite@8.2.1`（launch-editor 相关 GHSA，1 high + 2 moderate），仅测试/浏览器测试链使用，不进入发布包 | 合并 Dependabot #377（升级到 8.3.4，必需检查已通过） | 已合并 #377（`44652a5`），vite 告警已不再出现；但出现 2 个新的 moderate 告警（`@vitest/mocker` 4.1.11，仅开发依赖，4.1.12 修复），尚未处理 |
 | F3 | 中（CodeQL） | 告警 32 `js/shell-command-injection-from-environment`：`scripts/bounded-command.mjs` 在 Windows 上把来自环境（`ComSpec`、`tmpdir()` 推导的路径）的值拼接成 `cmd /d /s /c` 命令行 | 仅限 CI/开发脚本，不随包发布。建议改为直接用 `process.execPath` 运行 JS 入口，避免经过 `cmd`；若暂不改代码，以 "used in tests" 理由附证据关闭 | 未处理，告警仍开放 |
 | F4 | 中 | `package.json` 的 `files` 包含整个 `docs/`，发布包含 109 个 experiments/agent-notes 内部文件；#375 若合并，会再把 `docs/reviews/` 证据（约 3.5 万行）带进 npm 包 | 改为显式白名单，或排除 `docs/experiments`、`docs/agent-notes`、`docs/reviews`，并在 `check-pack.mjs` 中断言 | 已合并 #383（`2e727ab`），包内文件 177 → 68 |
 | F5 | 低（文档） | 回环信任：本机 peer + 回环 Host 即视为可信；若用户在本机放反向代理（如 Tailscale Serve/nginx 转发 `Host: localhost`），远端浏览器会继承信任（仍需 Host 自身认证） | 在 SECURITY/INSTALL 中写明不要以回环 Host 头反代 | 未处理 |
