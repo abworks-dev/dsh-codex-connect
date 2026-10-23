@@ -12,22 +12,22 @@ Codex Connect adds the `openai-codex` model provider to the normal Harness agent
 
 ## Quick start
 
-**Source candidate (unreleased):** `0.2.0-alpha.10` adds only exact DSH `0.2.1-rc.3` and retains the eleven hosts below. The published recommendation remains Alpha 9 / rc.2 until release readback. The candidate uses published npm artifacts; the rc.3 Git source tag is not verified. Keyless Host contracts do not establish real OAuth/model or Desktop acceptance. See the [candidate evidence](docs/agent-notes/dsh-021-rc3-compatibility.md).
+**Published Alpha 10:** [`0.2.0-alpha.10`](https://github.com/franksong2702/dsh-codex-connect/releases/tag/v0.2.0-alpha.10) adds only exact DSH `0.2.1-rc.3`, retains the eleven previous hosts, and delivers the default-off read-only quota tool and compact speed menu. npm version, alpha tag, Git tag, prerelease and archive hashes were independently verified; `latest` is unchanged. The upstream rc.3 Git-source mapping remains unverified; keyless contracts do not establish real-account/model or Desktop acceptance. See the [release record](docs/release-notes/0.2.0-alpha.10.md).
 
-This guide recommends Codex Connect `0.2.0-alpha.9` / DSH `0.2.1-rc.2`; the other exact supported hosts are listed below. Check `dsh --version` first and use `doctor --json` for local diagnostics; the CLI version alone does not prove which model-runtime packages are installed, and missing metadata is reported as unknown. For other versions, use [Installation and upgrades](INSTALL.md). A moving npm tag such as `alpha` is not a compatibility guarantee.
+This guide recommends Codex Connect `0.2.0-alpha.10` / DSH `0.2.1-rc.3`; the other exact supported hosts are listed below. Check `dsh --version` first and use `doctor --json` for local diagnostics; the CLI version alone does not prove which model-runtime packages are installed, and missing metadata is reported as unknown. For other versions, use [Installation and upgrades](INSTALL.md). A moving npm tag such as `alpha` is not a compatibility guarantee.
 
 | Requirement | Verified pairing |
 |---|---|
-| Codex Connect | `0.2.0-alpha.9` |
-| DeepSeek Harness | `0.1.7-rc.1`, `0.1.7-rc.2`, `0.2.0-rc.1`, `0.2.0-rc.2`, `0.2.1-alpha.1`, `0.2.1-alpha.2`, `0.2.1-alpha.3`, `0.2.1-alpha.4`, `0.2.1-alpha.5`, `0.2.1-rc.1` or `0.2.1-rc.2` (consistent package set) |
+| Codex Connect | `0.2.0-alpha.10` |
+| DeepSeek Harness | `0.1.7-rc.1`, `0.1.7-rc.2`, `0.2.0-rc.1`, `0.2.0-rc.2`, `0.2.1-alpha.1`, `0.2.1-alpha.2`, `0.2.1-alpha.3`, `0.2.1-alpha.4`, `0.2.1-alpha.5`, `0.2.1-rc.1`, `0.2.1-rc.2` or `0.2.1-rc.3` (consistent package set) |
 | Node.js | `^22.19.0 \|\| >=24.0.0` |
 | Account | ChatGPT OAuth with access to the requested Codex model; availability is decided by OpenAI |
 
-**Published maintenance release:** [`0.2.0-alpha.9`](https://github.com/franksong2702/dsh-codex-connect/releases/tag/v0.2.0-alpha.9) adds an optional reasoning-effort fallback and independent Standard / Fast / Ultrafast defaults for new top-level and ordinary subagent conversations. Explicit request effort and later manual speed choices win; omitted/reset settings retain the corresponding legacy defaults. Existing/resumed sessions remain respected. Ultrafast still requires sign-in and an eligible model/account route; eligibility and actual served tier remain unknown. Finite SSE and Task pause remain unchanged; no measured speed multiplier or real-account/Desktop acceptance is claimed.
+**Historical maintenance release:** [`0.2.0-alpha.9`](https://github.com/franksong2702/dsh-codex-connect/releases/tag/v0.2.0-alpha.9) adds an optional reasoning-effort fallback and independent Standard / Fast / Ultrafast defaults for new top-level and ordinary subagent conversations. Explicit request effort and later manual speed choices win; omitted/reset settings retain the corresponding legacy defaults. Existing/resumed sessions remain respected. Ultrafast still requires sign-in and an eligible model/account route; eligibility and actual served tier remain unknown. Finite SSE and Task pause remain unchanged; no measured speed multiplier or real-account/Desktop acceptance is claimed.
 
 **Historical maintenance release:** [`0.2.0-alpha.8`](https://github.com/franksong2702/dsh-codex-connect/releases/tag/v0.2.0-alpha.8) adds explicit conversation Standard / Fast / Ultrafast selection, preserves the Host retry policy, sets the GPT-6.1 Sol context default to 500,000 tokens, and repairs recovery/file identity and Windows packaging checks. Ultrafast remains opt-in for the two documented Codex model IDs; defaults for new main/subagent conversations are not included. Eligibility and the actual served tier remain unknown; finite SSE and existing opt-in defaults are retained. No measured speed or real-account/Desktop acceptance is claimed.
 
-**Historical image-recovery release:** [`0.2.0-alpha.7`](https://github.com/franksong2702/dsh-codex-connect/releases/tag/v0.2.0-alpha.7) retains completed, validated originals when Harness preview saving fails, with original download and explicit continued editing. Tool help clarifies that chat can stay on DeepSeek while Codex Connect handles images through its separate ChatGPT OAuth lane. All eleven exact host pairings above remain verified; the underlying image interface and credentials are unchanged. Synthetic checks do not establish real-account or Desktop acceptance.
+**Historical image-recovery release:** [`0.2.0-alpha.7`](https://github.com/franksong2702/dsh-codex-connect/releases/tag/v0.2.0-alpha.7) retains completed, validated originals when Harness preview saving fails, with original download and explicit continued editing. Tool help clarifies that chat can stay on DeepSeek while Codex Connect handles images through its separate ChatGPT OAuth lane. Its eleven original exact host pairings remain verified; the underlying image interface and credentials are unchanged. Synthetic checks do not establish real-account or Desktop acceptance.
 
 `0.2.0-alpha.4` extends exact host support to DSH `0.2.1-alpha.2` and `0.2.1-alpha.3`, retaining the previous five hosts. Existing supported hosts do not require an upgrade; Task remains paused and defaults are unchanged.
 
@@ -37,20 +37,20 @@ Historical release [`0.2.0-alpha.3`](docs/release-notes/0.2.0-alpha.3.md) adds o
 
 Historical release [`0.2.0-alpha.2`](docs/release-notes/0.2.0-alpha.2.md) publishes exact DSH `0.2.1-alpha.1` compatibility and the cross-route image selection handle repair. The earlier `0.2.0-alpha.1` artifact remains unchanged and rejects that host. Existing supported hosts do not require an upgrade.
 
-As of 2026-10-20, npm `alpha` points to `0.2.0-alpha.9`, while `latest` remains `0.2.0-alpha.1`. Default installation still selects the earlier Alpha; the `latest` tag does not make it a stable release. Use the exact version below for these DSH pairings; a moving npm tag is not a compatibility guarantee for other hosts.
+As of 2026-10-23, npm `alpha` points to `0.2.0-alpha.10`, while `latest` remains `0.2.0-alpha.1`. Default installation still selects the earlier Alpha; the `latest` tag does not make it a stable release. Use the exact version below for these DSH pairings; a moving npm tag is not a compatibility guarantee for other hosts.
 
 Historical release [`0.2.0-alpha.1`](docs/release-notes/0.2.0-alpha.1.md) adds `gpt-6.1-sol` through a model-catalog fallback and begins the shorter independent plugin numbering. The four supported DSH versions are unchanged; no host upgrade is required.
 
 It retains Alpha 4.54's handling of initial system instructions and tool definitions on DSH 0.2.0-rc.2, diagnostics for differing host/plugin provider libraries, and Canary's normal-request checks, along with Alpha 4.53's core maintenance changes, existing-task recovery and safety, and 4.52's [opt-in local request metrics](docs/request-metrics.md). Collection stays off until a private directory is configured; unknown usage is not zero. No Task reopening or model-library/OAuth upgrade is included.
 
-The package passed keyless installation/runtime regression on all eleven exact DSH versions above. Task controls remain paused: activation is rejected and existing current-host browser regressions show no controls in fresh Sessions. These checks do not establish live OAuth, real-account image editing, authenticated browser acceptance on the new host, or full user acceptance; migration of earlier Task grants across a Harness upgrade is not verified. Older supported pairings and their task behavior are documented in [Installation and upgrades](INSTALL.md).
+The package passed keyless installation/runtime regression on all twelve exact DSH versions above. Task controls remain paused: activation is rejected and existing current-host browser regressions show no controls in fresh Sessions. These checks do not establish live OAuth, real-account image editing, authenticated browser acceptance on the new host, or full user acceptance; migration of earlier Task grants across a Harness upgrade is not verified. Older supported pairings and their task behavior are documented in [Installation and upgrades](INSTALL.md).
 
 Historically, on 2026-10-10 the maintainer reported successful login and normal use on Desktop `0.2.0-rc.2` with the identified local adaptation build. Only the historical `0.2.0-alpha.3` client was compared with that local adaptation and found to differ only by the package-version string. This comparison does not establish `0.2.0-alpha.4` Desktop or live-account acceptance, nor acceptance of later npm artifacts; no new real Desktop acceptance was performed. See the [Desktop acceptance record](INSTALL.md#official-desktop).
 
 ### 1. Install
 
 ```sh
-dsh plugin --profile web add dsh-codex-connect@0.2.0-alpha.9
+dsh plugin --profile web add dsh-codex-connect@0.2.0-alpha.10
 dsh web
 ```
 
