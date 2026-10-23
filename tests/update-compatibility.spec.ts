@@ -64,8 +64,13 @@ describe('Codex Connect verified DSH compatibility', () => {
   it('keeps the committed public catalog valid', async () => {
     const contents = await readFile(new URL('../verified-compatibility.json', import.meta.url), 'utf8')
     expect(parseOpenAICodexVerifiedCompatibility(JSON.parse(contents) as unknown)).toMatchObject({
-      latestDshVersion: '0.2.1-rc.2',
-      pluginVersions: catalog.pluginVersions,
+      latestDshVersion: '0.2.1-rc.3',
+      pluginVersions: [...catalog.pluginVersions, {
+        version: '0.2.0-alpha.10',
+        verifiedDshVersions: ['0.1.7-rc.1', '0.1.7-rc.2', '0.2.0-rc.1', '0.2.0-rc.2',
+          '0.2.1-alpha.1', '0.2.1-alpha.2', '0.2.1-alpha.3', '0.2.1-alpha.4', '0.2.1-alpha.5',
+          '0.2.1-rc.1', '0.2.1-rc.2', '0.2.1-rc.3'],
+      }],
     })
   })
 
