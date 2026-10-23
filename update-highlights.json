@@ -156,6 +156,10 @@
     {
       "version": "0.2.0-alpha.9",
       "highlights": []
+    },
+    {
+      "version": "0.2.0-alpha.10",
+      "highlights": ["runtime-compatibility", "quota-fast-mode"]
     }
   ]
 }
