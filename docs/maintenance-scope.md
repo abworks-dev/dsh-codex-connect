@@ -12,6 +12,10 @@ A proposal needs an identifiable user problem, repeatable supporting evidence an
 
 The maintainer explicitly approved a minimal PR for model-callable, default-off, read-only quota observation and optional skill guidance. This exception admits only a projection of existing identity-bound quota data: shared-window remaining percentages, reset times, local observation time and unknown/stale states. It excludes balances, account identifiers, credentials and raw responses. It does not admit automatic model/account switching, scheduling, a general budget system or renewed Adaptive Task development. Existing defaults, permissions, cancellation, cache isolation and failure backoff remain obligations. The approval authorizes implementation/review; it is not release or live-account acceptance.
 
+### Bounded admission — issue #388, 2026-10-23
+
+After the published npm artifact comparison and isolated actual-Host candidate checks, the maintainer explicitly approved adding only exact DSH `0.2.1-rc.3` while retaining the eleven existing hosts. This admits the focused compatibility candidate and the next Alpha release through independent review, required exact-head CI and the existing protected release workflow. It does not infer support for later versions, certify real-account/Desktop acceptance, authorize a daily Host upgrade or reopen any frozen track. Published recommendations change only after release readback.
+
 ## Disposition
 
 | Surface | Disposition | Retained obligations |

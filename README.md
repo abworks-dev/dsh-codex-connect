@@ -12,6 +12,8 @@ Codex Connect adds the `openai-codex` model provider to the normal Harness agent
 
 ## Quick start
 
+**Source candidate (unreleased):** `0.2.0-alpha.10` adds only exact DSH `0.2.1-rc.3` and retains the eleven hosts below. The published recommendation remains Alpha 9 / rc.2 until release readback. The candidate uses published npm artifacts; the rc.3 Git source tag is not verified. Keyless Host contracts do not establish real OAuth/model or Desktop acceptance. See the [candidate evidence](docs/agent-notes/dsh-021-rc3-compatibility.md).
+
 This guide recommends Codex Connect `0.2.0-alpha.9` / DSH `0.2.1-rc.2`; the other exact supported hosts are listed below. Check `dsh --version` first and use `doctor --json` for local diagnostics; the CLI version alone does not prove which model-runtime packages are installed, and missing metadata is reported as unknown. For other versions, use [Installation and upgrades](INSTALL.md). A moving npm tag such as `alpha` is not a compatibility guarantee.
 
 | Requirement | Verified pairing |
