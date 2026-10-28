@@ -526,6 +526,24 @@ test('a late human answer after revocation cannot reopen a task', async t => {
   assert.deepEqual(f.nativeRequests.map(x => x.method), ['getApp'])
 })
 
+test('application revoke during a pending task question invalidates the late answer', async t => {
+  let asked, answer
+  const pending = new Promise(resolve => { asked = resolve })
+  const f = await directTaskFixture(t, { humanAnswer: () => { asked(); return new Promise(resolve => { answer = resolve }) } })
+  if (!f) return
+  const run = f.invoke({ method: 'getApp', params: { selector: target.application } })
+  await pending
+  const revoke = f.ctx.get('cuaAccess').revoke('a'.repeat(64))
+  await new Promise(resolve => setImmediate(resolve))
+  const revokedBeforeAnswer = f.grant.signal.aborted
+  answer(allowTask())
+  await run
+  await revoke
+  assert.equal(revokedBeforeAnswer, true)
+  assert.throws(() => f.capability.begin(f.input), /new user input/)
+  assert.deepEqual(f.nativeRequests.map(x => x.method), ['getApp'])
+})
+
 test('a denied root task cannot automatically create another worker for the same user input', async t => {
   const f = await fixture({ officialCua: true, strict: true, script: taskScript(), humanAnswer: () => ({ answers: [{ id: 'cua-task-access', selected: ['Deny'] }] }) })
   if (!f.ctx.get('cuaTaskApproval')) { t.skip('requires local.2 task capability'); return }

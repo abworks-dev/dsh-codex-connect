@@ -48,12 +48,12 @@
     "@deepseek-ai/dsh-cua": {
       "baseIntegrity": "sha512-yceImk1O0NkKTdwe8IQYX9SPmsulcJD7LtmPm7oJXunY2+4HQkJNA3qOSk5zJyr1NpWffnRdUcJvTIDgIMGOSA==",
       "patch": "patches/dsh-cua.patch",
-      "patchSha256": "16e5ac7e34689a1d0c451a322b4a2b8c36064742d3b9a65dbd90dfe98ac7fa90",
+      "patchSha256": "0ccbb87f46cc053c74459c0220f0bf81af81ae08dae0ff7c51ba092f96ac8a22",
       "files": [
         {
           "path": "lib/index.js",
           "baseSha256": "e62f507fa5471f2797eb9d4f0d22f10f5edb3d49d05f2be2ea7ae6024485b2b2",
-          "patchedSha256": "e52441c1bcf4b22e24c8b275ee4d1b758377d96f8988b01b203f9253a07eb7e9"
+          "patchedSha256": "125b44e1b4aa8d9a3dadf0631ce66ade6250ad263d1b9b4299853c205528fd40"
         },
         {
           "path": "lib/protocol.js",

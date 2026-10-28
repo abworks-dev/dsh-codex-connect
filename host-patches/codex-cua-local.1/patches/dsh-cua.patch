@@ -122,7 +122,7 @@
 -	async select(agent, client, handle, identity, signal, icon) {
 +	async select(agent, client, handle, identity, signal, icon, prepared) {
 +		const task = this.taskFor(agent);
-+		if (task) return this.withOperation(agent, client, identity, AbortSignal.any([signal, task.signal]), () => this.selectInOrder(agent, identity.id, () => this.selectTask(task, client, handle, identity, prepared, signal, icon)));
++		if (task) return this.withOperation(agent, client, identity, AbortSignal.any([signal, task.signal]), (lifetime) => this.selectInOrder(agent, identity.id, () => this.selectTask(task, client, handle, identity, prepared, lifetime, icon)));
 @@ -774,0 +889,7 @@
 +		if (selected.scope === "task") {
 +			const task = this.tasks.get(selected.taskId);
@@ -134,11 +134,11 @@
 @@ -833,0 +955,2 @@
 +		const task = this.taskFor(agent);
 +		if (task) void this.endTask(task).catch(() => {});
-@@ -865,0 +989,4 @@
-+			if (selection.scope === "task") {
-+				const task = this.tasks.get(selection.taskId);
-+				if (task) { this.taskRefusals.set(task.parent, task.userInput); void this.endTask(task).catch(() => {}); }
-+			}
+@@ -864,0 +988,4 @@
++		for (const task of this.tasks.values()) if (task.identity?.id === id && (agent === void 0 || task.child.id === agent.id)) {
++			this.taskRefusals.set(task.parent, task.userInput);
++			void this.endTask(task).catch(() => {});
++		}
 @@ -1120,0 +1248 @@
 +	windowScope: z.enum(["strict-window", "application"]).optional(),
 @@ -1486,0 +1615,4 @@
