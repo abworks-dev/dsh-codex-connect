@@ -14,6 +14,8 @@ Codex Connect 为标准 Harness agent loop 添加 `openai-codex` 模型提供方
 
 ## 快速开始
 
+**尚未发布的兼容性候选：** `0.2.0-alpha.11` 仅针对精确 DSH `0.2.1-rc.4`，保留原有 12 个宿主。已发布的 Alpha 10 包仍拒绝 rc.4。安装命令继续采用已发布的 Alpha 10 / rc.3 配对，等待另行发布与回读验证。参见[候选证据](agent-notes/dsh-021-rc4-compatibility.md)；无真实凭据的检查不代表真实 OAuth 或桌面端验收。
+
 **已发布 Alpha 10：** [`0.2.0-alpha.10`](https://github.com/franksong2702/dsh-codex-connect/releases/tag/v0.2.0-alpha.10) 仅新增精确 DSH `0.2.1-rc.3`，保留原有 11 个宿主，并交付默认关闭的只读额度工具及紧凑速度菜单。npm 版本、alpha 标签、Git tag、prerelease 和包哈希已独立回读；`latest` 不变。rc.3 的上游 Git 源码映射仍未验证；无凭据合约不代表真实账户／模型或 Desktop 验收。参见[发布记录](release-notes/0.2.0-alpha.10.md)。
 
 本指南推荐 Codex Connect `0.2.0-alpha.10` / DSH `0.2.1-rc.3`；其他受支持的精确宿主版本见下表。请先运行 `dsh --version`，再用 `doctor --json` 做本地诊断；单凭 CLI 版本无法证明实际安装的模型运行库版本，缺少版本元数据时会报告未知。其他版本请查阅[安装与升级](../INSTALL.md)。`alpha` 等会移动的 npm tag 不代表兼容性保证。

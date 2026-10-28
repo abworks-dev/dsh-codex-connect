@@ -31,7 +31,7 @@ describe('installation version guidance', () => {
       '0.2.1-alpha.1', '0.2.1-alpha.2', '0.2.1-alpha.3', '0.2.1-alpha.4', '0.2.1-alpha.5', '0.2.1-rc.1']
     expect(compatibility.pluginVersions.find((entry: { version: string }) => entry.version === '0.2.0-alpha.5')?.verifiedDshVersions)
       .toEqual(published)
-    expect(declared.dshPluginApi.versions).toEqual([...published, '0.2.1-rc.2', '0.2.1-rc.3'])
+    expect(declared.dshPluginApi.versions).toEqual([...published, '0.2.1-rc.2', '0.2.1-rc.3', '0.2.1-rc.4'])
     expect(compatibility.pluginVersions.find((entry: { version: string }) => entry.version === '0.2.0-alpha.9')?.verifiedDshVersions)
       .toEqual([...published, '0.2.1-rc.2'])
     expect(install).toContain('The recommended pair is Codex Connect `0.2.0-alpha.10` / DSH `0.2.1-rc.3`')
@@ -57,6 +57,16 @@ describe('installation version guidance', () => {
     }
     expect(compatibility.pluginVersions.find((entry: { version: string }) => entry.version === '0.2.0-alpha.9')?.verifiedDshVersions)
       .not.toContain('0.2.1-rc.3')
+  })
+
+  it('records rc.4 only for the unpublished Alpha 11 candidate and preserves Alpha 10 installation commands', async () => {
+    expect(compatibility.pluginVersions.find((entry: { version: string }) => entry.version === '0.2.0-alpha.10')?.verifiedDshVersions)
+      .not.toContain('0.2.1-rc.4')
+    expect(compatibility.pluginVersions.find((entry: { version: string }) => entry.version === '0.2.0-alpha.11')?.verifiedDshVersions)
+      .toContain('0.2.1-rc.4')
+    expect(install).toContain('**Unpublished compatibility candidate:**')
+    expect(install).toContain('The immutable published Alpha 10 package still rejects rc.4.')
+    expect(install).not.toContain('add dsh-codex-connect@0.2.0-alpha.11')
   })
 
   it.each([

@@ -12,6 +12,8 @@ Codex Connect adds the `openai-codex` model provider to the normal Harness agent
 
 ## Quick start
 
+**Unpublished compatibility candidate:** `0.2.0-alpha.11` targets only exact DSH `0.2.1-rc.4`, retaining the twelve previous hosts. The published Alpha 10 artifact still rejects rc.4. Installation commands remain on the published Alpha 10 / rc.3 pair pending separate publication and readback. See the [candidate evidence](docs/agent-notes/dsh-021-rc4-compatibility.md); keyless checks do not establish real OAuth or Desktop acceptance.
+
 **Published Alpha 10:** [`0.2.0-alpha.10`](https://github.com/franksong2702/dsh-codex-connect/releases/tag/v0.2.0-alpha.10) adds only exact DSH `0.2.1-rc.3`, retains the eleven previous hosts, and delivers the default-off read-only quota tool and compact speed menu. npm version, alpha tag, Git tag, prerelease and archive hashes were independently verified; `latest` is unchanged. The upstream rc.3 Git-source mapping remains unverified; keyless contracts do not establish real-account/model or Desktop acceptance. See the [release record](docs/release-notes/0.2.0-alpha.10.md).
 
 This guide recommends Codex Connect `0.2.0-alpha.10` / DSH `0.2.1-rc.3`; the other exact supported hosts are listed below. Check `dsh --version` first and use `doctor --json` for local diagnostics; the CLI version alone does not prove which model-runtime packages are installed, and missing metadata is reported as unknown. For other versions, use [Installation and upgrades](INSTALL.md). A moving npm tag such as `alpha` is not a compatibility guarantee.
