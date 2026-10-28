@@ -74,6 +74,15 @@ export function withOpenAICodexModels(
       }
     }
   }
+  if (!models.some(model => model.id === 'gpt-6.1-terra')) {
+    // The pinned Codex catalog (see the Terra-specific model-contract source)
+    // lists low/medium/high/xhigh/max, not the API-only none or client Ultra.
+    // Apply these masks only to our fallback; native Terra metadata wins intact.
+    models.push({ ...OPENAI_CODEX_ASTRA_MODEL,
+      id: 'gpt-6.1-terra', name: 'GPT-6.1 Terra', contextWindow: 500_000,
+      thinkingLevelMap: { off: null, minimal: null, xhigh: 'xhigh', max: 'max' },
+    })
+  }
   return { ...baseline, getModels: () => models }
 }
 
