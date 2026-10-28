@@ -18,6 +18,10 @@ After the published npm artifact comparison and isolated actual-Host candidate c
 
 ## Disposition
 
+### Bounded admission — experimental Computer Use, 2026-10-28
+
+The maintainer explicitly requested a model-independent, bounded Terra Computer Use worker and an isolated local candidate for a designated Web instance. This admits a default-off companion, the exact published Host compatibility adaptation, synthetic Host/fixture tests and a reviewed, reversible local deployment. It does not reopen Adaptive Task, add a background job platform, grant application/system access, authorize unrelated desktop automation, or approve public release. Existing Host authorization and child identity must remain authoritative. Mock and scripted Host evidence cannot establish live acceptance or native performance parity; those require comparable local runs. The proposed performance margins remain discussion criteria, not approved acceptance thresholds.
+
 | Surface | Disposition | Retained obligations |
 | --- | --- | --- |
 | Authorization, manual models, installation, compatibility, Canary, diagnostics | Maintain | Scoped defect fixes and supported-version evidence; no automatic expansion of support |

@@ -1,0 +1,21 @@
+# Experimental Terra Computer Use companion
+
+This explicit, default-off companion exposes `codex_computer_use({ goal })`. It creates a fresh owned `openai-codex / gpt-6.1-terra / high` Agent through the published DSH factory. The parent model and session are unchanged. It is separate from frozen Adaptive Task and does not install a background task service.
+
+Only the exact published DSH `0.2.2-alpha.2` package set is admitted. Codex Connect's separate exact compatibility gate must also pass before installing both into a daily Host. This package is private and experimental; it is not a release or an assertion that the current Connect candidate supports that Host.
+
+The existing public DSH macOS CUA provider must be configured with `agentPreset: codex-terra-computer-use` for the empty dedicated preset. DSH admits only one provider; this companion never creates a second one. The child selects `NativeToolExecutor` and uses the standard Host pipeline. Its guard admits only CUA and a terminal report, with an exact operator-configured application selector and window ID. Supported operations are AX `getState`, screenshot, click, AX `setValue`, and scroll after `getApp`. App-wide keyboard/text, clipboard, discovery, menus, shell, PTC, file/network tools and further delegation are unavailable. AX snapshots must originate in the configured window. Application-wide window metadata is removed before model rendering/logging.
+
+The operator must configure `application` and `windowId`; zero/empty values return `operator_target_required`. Discovering a window or granting access is not delegated to the model. Existing applicable DSH authorization can be used. Missing application consent returns blocked; the worker never impersonates a root Agent, inherits a parent session's consent, writes grants or prompts for new system permissions. The official provider still owns native identity, authorization revocation, screenshot scaling and input checks.
+
+A per-user exclusive desktop file lease is held until the child and native work drain. Cancellation, deadline, operation/step budgets, parent disposal and lease loss close execution. Uncertain cleanup retains the lease for operator recovery. This coordinates instances of this companion only; it cannot lock out humans or unrelated automation. Native cancellation is cooperative; an unresponsive Host can delay quiescence past the requested deadline. It must never be reported as completed merely because the timer expired.
+
+The result includes structured status, finite reason, requested/effective route observed at Host step preparation, child session identity, model step/CUA counts and elapsed time. `completed` means worker-reported completion. It is not independent acceptance, a billed-cost measurement, or proof of parity with native Codex. Real provider and GUI performance acceptance remain outstanding.
+
+## Validation
+
+`test/host.test.mjs` runs against the actual published Agent loop, preset registry and Native tool pipeline with an in-memory scripted provider and synthetic CUA channel. It never makes a model request, opens an application, captures a screenshot, or creates credentials. The official CUA authorization case uses `installCua` with a synthetic transport, not a reimplementation of its consent policy.
+
+Run the tests from a copy of this package below an isolated exact-version Host fixture. ESM resolves peers from that fixture; running directly in the parent repository would incorrectly resolve its older baseline Host. The checked-in Host checker prepares this fixture and tests the copied package bytes. Do not point it at a daily profile.
+
+For local acceptance, first validate the Connect/Host combination, obtain review of the exact candidate and verify rollback. Then an operator may enable the companion in the target profile, configure the dedicated synthetic application's window, resolve any new system/application consent themselves, and ask any parent model to call `codex_computer_use`. Live requests consume the user's subscription allowance. The prepared five-task native pilot is observational only; its effective model/effort is unknown. Custom live runs and a comparable native route/identity are still required before a performance comparison.
