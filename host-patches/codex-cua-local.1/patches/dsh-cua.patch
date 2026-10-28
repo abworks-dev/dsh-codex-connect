@@ -56,7 +56,7 @@
 +			if (!task.snapshotId || p.snapshotId !== task.snapshotId || !Number.isSafeInteger(p.elementIndex) || p.elementIndex < 0) throw new NativeError("CUA_TASK_SNAPSHOT_DENIED", "Task requires its latest strict window snapshot");
 +		} else if (p.windowId !== task.scope.windowId) throw new NativeError("CUA_TASK_WINDOW_DENIED", "Task requires its exact window");
 +		if (method === "click" && (p.mouseButton !== void 0 && p.mouseButton !== "left" || p.modifiers !== void 0 && p.modifiers.length !== 0 || p.holdMs !== void 0 && p.holdMs !== 0)) throw new NativeError("CUA_TASK_OPERATION_DENIED", "Task permits primary unmodified clicks only");
-@@ -561,0 +616,58 @@
+@@ -561,0 +616,76 @@
 +	observeTask(agent, request, value) {
 +		const task = this.taskFor(agent);
 +		if (!task) return;
@@ -71,9 +71,12 @@
 +		this.assertTask(task);
 +		if (prepared.pid === null || task.identity && (identity.id !== task.identity.id || prepared.pid !== task.pid)) throw new NativeError("CUA_TASK_TARGET_DENIED", "Task requires the same already-running native application");
 +		task.clients.add(client);
++		let generation = task.generation;
 +		if (!task.approved) {
 +			task.identity = Object.freeze({ id: identity.id, name: identity.name });
 +			task.pid = prepared.pid;
++			generation = await this.options.store.withApplication(identity.id, signal, () => this.revocationGeneration(identity.id, signal));
++			this.assertTask(task);
 +			const questions = this.ctx.get("userQuestions");
 +			if (!questions) throw new NativeError("APP_APPROVAL_UNAVAILABLE", "No human answerer is available for task consent");
 +			const detail = `Application: ${identity.name}\nProcess: ${prepared.pid}\nWindow: ${task.scope.windowId}\nTask: ${task.scope.goal}\nExpires: ${new Date(task.scope.expiresAt).toISOString()}\nOnly this child and task may observe and control that window. No application menus, global keyboard/text, clipboard, other windows, or permanent permission. Use Stop in this root conversation to cancel and revoke this task. Completion, cancellation, revocation or expiration removes this grant.`;
@@ -81,24 +84,39 @@
 +			try {
 +				answer = await questions.ask({ agent: task.parent, signal: AbortSignal.any([signal, task.signal]), questions: [{ id: "cua-task-access", question: `Allow this Computer Use task in ${identity.name}, window ${task.scope.windowId}?`, detail, options: [{ label: "Allow this task" }, { label: "Deny" }], intent: { kind: "approval", approve: "Allow this task", reject: "Deny", subject: { name: identity.name, ...icon === void 0 ? {} : { icon } } } }] });
 +			} catch (error) {
++				this.taskRefusals.set(task.parent, task.userInput);
 +				void this.endTask(task).catch(() => {});
 +				throw error;
 +			}
 +			this.assertTask(task);
-+			const chosen = answer.answers?.find((row) => row.id === "cua-task-access");
-+			if (answer.answers?.length !== 1 || chosen?.custom?.trim() || chosen?.selected?.length !== 1 || chosen.selected[0] !== "Allow this task") {
++			const answers = Array.isArray(answer?.answers) ? answer.answers : [];
++			const chosen = answers.find((row) => row?.id === "cua-task-access");
++			if (answers.length !== 1 || chosen?.custom !== void 0 && chosen.custom !== "" || !Array.isArray(chosen?.selected) || chosen.selected.length !== 1 || chosen.selected[0] !== "Allow this task") {
 +				this.taskRefusals.set(task.parent, task.userInput);
 +				void this.endTask(task).catch(() => {});
 +				throw new NativeError("CUA_TASK_DENIED", "The human did not approve this task. Stop; do not retry or switch tools.");
 +			}
-+			task.approved = true;
 +		}
-+		this.assertTask(task);
-+		task.appHandle = handle;
-+		task.snapshotId = void 0;
-+		const state = this.clients.get(client) ?? { agent: task.child, handles: new Map() };
-+		state.handles.set(handle, { identity: task.identity, scope: "task", taskId: task.id, sessionId: task.child.id, lifetime: new AbortController() });
-+		this.clients.set(client, state);
++		await this.options.store.withApplication(identity.id, signal, async () => {
++			this.assertTask(task);
++			if (await this.revocationGeneration(identity.id, signal) !== generation) this.taskRevoked(task);
++			this.assertTask(task);
++			task.generation = generation;
++			task.approved = true;
++			task.appHandle = handle;
++			task.snapshotId = void 0;
++			const state = this.clients.get(client) ?? { agent: task.child, handles: new Map() };
++			state.handles.set(handle, { identity: task.identity, scope: "task", taskId: task.id, sessionId: task.child.id, lifetime: new AbortController() });
++			this.clients.set(client, state);
++		});
++	}
++	revocationGeneration(id, signal) {
++		return this.options.store.withState(signal, ({ state }) => state.applications[id]?.revoked ?? 0);
++	}
++	taskRevoked(task) {
++		this.taskRefusals.set(task.parent, task.userInput);
++		void this.endTask(task).catch(() => {});
++		throw new NativeError("CUA_TASK_REVOKED", "Application access was revoked; this task cannot continue");
 +	}
 +	endTask(task) {
 +		if (task.closing) return task.closing;
@@ -115,63 +133,70 @@
 +			// to ordinary saved application grants after its task has ended.
 +		});
 +	}
-@@ -569 +681 @@
+@@ -569 +699 @@
 -			await Promise.allSettled([this.options.store.drain(), ...[...this.active].map((operation) => operation.done.promise)]);
 +			await Promise.allSettled([...[...this.tasks.values()].map((task) => this.endTask(task)), this.options.store.drain(), ...[...this.active].map((operation) => operation.done.promise)]);
-@@ -647 +759,3 @@
+@@ -647 +777,3 @@
 -	async select(agent, client, handle, identity, signal, icon) {
 +	async select(agent, client, handle, identity, signal, icon, prepared) {
 +		const task = this.taskFor(agent);
 +		if (task) return this.withOperation(agent, client, identity, AbortSignal.any([signal, task.signal]), (lifetime) => this.selectInOrder(agent, identity.id, () => this.selectTask(task, client, handle, identity, prepared, lifetime, icon)));
-@@ -774,0 +889,7 @@
+@@ -774,0 +907,12 @@
 +		if (selected.scope === "task") {
 +			const task = this.tasks.get(selected.taskId);
 +			this.assertTask(task);
 +			if (state.agent !== task.child || task.appHandle !== handle) throw new NativeError("CUA_TASK_OWNER_INVALID", "Foreign task handle");
 +			const lifetime = AbortSignal.any([signal, task.signal, selected.lifetime.signal]);
-+			return this.options.store.withApplication(selected.identity.id, lifetime, () => { this.assertTask(task); return this.withOperation(state.agent, client, selected.identity, lifetime, dispatch); });
++			return this.options.store.withApplication(selected.identity.id, lifetime, async () => {
++				this.assertTask(task);
++				if (await this.revocationGeneration(selected.identity.id, lifetime) !== task.generation) this.taskRevoked(task);
++				this.assertTask(task);
++				return this.withOperation(state.agent, client, selected.identity, lifetime, dispatch);
++			});
 +		}
-@@ -833,0 +955,2 @@
+@@ -833,0 +978,2 @@
 +		const task = this.taskFor(agent);
 +		if (task) void this.endTask(task).catch(() => {});
-@@ -864,0 +988,4 @@
+@@ -864,0 +1011,4 @@
 +		for (const task of this.tasks.values()) if (task.identity?.id === id && (agent === void 0 || task.child.id === agent.id)) {
 +			this.taskRefusals.set(task.parent, task.userInput);
 +			void this.endTask(task).catch(() => {});
 +		}
-@@ -1120,0 +1248 @@
+@@ -1120,0 +1271 @@
 +	windowScope: z.enum(["strict-window", "application"]).optional(),
-@@ -1486,0 +1615,4 @@
+@@ -1486,0 +1638,4 @@
 +		beginTask: policy.beginTask.bind(policy),
 +		taskFor: policy.taskFor.bind(policy),
 +		checkTaskRequest: policy.checkTaskRequest.bind(policy),
 +		observeTask: policy.observeTask.bind(policy),
-@@ -1577,0 +1710 @@
+@@ -1577,0 +1733 @@
 +	strictWindowScope: Schema.boolean().default(false),
-@@ -1645,0 +1779 @@
+@@ -1645,0 +1802 @@
 +	ctx.provide("cuaWindowScope", Object.freeze({ version: 1, strictWindowScope: config.strictWindowScope === true }));
-@@ -1668,0 +1803 @@
+@@ -1668,0 +1826 @@
 +	if (config.strictWindowScope === true) ctx.provide("cuaTaskApproval", Object.freeze({ version: 1, begin: (input) => access.beginTask(input) }));
-@@ -1720,0 +1856 @@
+@@ -1720,0 +1879 @@
 +			access.checkTaskRequest(execution.agent, request);
-@@ -1739 +1875,2 @@
+@@ -1739 +1898,2 @@
 -				maxDepth: config.maxDepth
 +				maxDepth: config.maxDepth,
 +				strictWindowScope: config.strictWindowScope
-@@ -1748,0 +1886 @@
+@@ -1748,0 +1909 @@
 +				access.observeTask(agent, request, screenshot);
-@@ -1781 +1919 @@
+@@ -1781 +1942 @@
 -				await access.select(agent, client, prepared.appHandle, authorization, signal, applicationIcon);
 +				await access.select(agent, client, prepared.appHandle, authorization, signal, applicationIcon, prepared);
-@@ -1793,0 +1932 @@
+@@ -1793,0 +1955 @@
 +				access.observeTask(agent, request, state);
-@@ -1813,0 +1953 @@
+@@ -1813,0 +1976 @@
 +				access.checkTaskRequest(agent, request);
-@@ -1820 +1960,2 @@
+@@ -1820 +1983,2 @@
 -					owner.signal
 +					owner.signal,
 +					...access.taskFor(agent) ? [access.taskFor(agent).signal] : []
-@@ -1916,0 +2058,2 @@
+@@ -1836,0 +2001 @@
++					access.taskFor(agent)?.clients.add(nativeClient);
+@@ -1916,0 +2082,2 @@
 +
 +export const STRICT_WINDOW_SCOPE_VERSION = 1;
 --- a/lib/protocol.js

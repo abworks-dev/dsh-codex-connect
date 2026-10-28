@@ -399,6 +399,66 @@ async function directTaskFixture(t, options = {}) {
   return { ...f, capability, child, controller, input, grant, invoke }
 }
 
+// Two Host policies receive separate adapters over one synthetic profile domain.
+// Each read returns a fresh snapshot; a cached permission object cannot pass.
+function sharedPermissionDomain() {
+  let state = { migrated: true, applications: {} }, stateTail = Promise.resolve(), writes = 0
+  const appTails = new Map()
+  const queue = (previous, signal, operation) => previous.catch(() => {}).then(() => { signal.throwIfAborted(); return operation() })
+  return {
+    get writes() { return writes },
+    open() { return {
+      persistent: false,
+      withState(signal, operation) {
+        const result = queue(stateTail, signal, () => operation({ state: structuredClone(state), async save(next) { writes++; state = structuredClone(next) } }))
+        stateTail = result.catch(() => {})
+        return result
+      },
+      withApplication(id, signal, operation) {
+        const result = queue(appTails.get(id) ?? Promise.resolve(), signal, operation)
+        appTails.set(id, result.catch(() => {}))
+        return result
+      },
+      async drain() { await Promise.all([stateTail, ...appTails.values()]) },
+    } },
+  }
+}
+
+test('another Host sharing the profile can revoke an approved task before later native dispatch', async t => {
+  const first = await directTaskFixture(t)
+  if (!first) return
+  const second = await fixture({ officialCua: true, strict: true })
+  const domain = sharedPermissionDomain()
+  first.ctx.get('cuaAccess').policy.options.store = domain.open()
+  second.ctx.get('cuaAccess').policy.options.store = domain.open()
+  assert.equal((await first.invoke({ method: 'getApp', params: { selector: target.application } })).isError, false)
+  assert.equal(domain.writes, 0, 'task consent must not save an application grant')
+  const before = first.nativeRequests.length
+  await second.ctx.get('cuaAccess').revoke('a'.repeat(64))
+  assert.equal(domain.writes, 1, 'only the explicit legacy revoke writes shared state')
+  assert.equal((await first.invoke({ method: 'getState', params: { appHandle: 'app-fixture', windowId: 7 } })).isError, true)
+  assert.equal(first.nativeRequests.length, before)
+  assert.equal(first.grant.signal.aborted, true)
+})
+
+test('another Host revoking during the human question invalidates its late approval', async t => {
+  let asked, answer
+  const pending = new Promise(resolve => { asked = resolve })
+  const first = await directTaskFixture(t, { humanAnswer: () => { asked(); return new Promise(resolve => { answer = resolve }) } })
+  if (!first) return
+  const second = await fixture({ officialCua: true, strict: true })
+  const domain = sharedPermissionDomain()
+  first.ctx.get('cuaAccess').policy.options.store = domain.open()
+  second.ctx.get('cuaAccess').policy.options.store = domain.open()
+  const run = first.invoke({ method: 'getApp', params: { selector: target.application } })
+  await pending
+  await second.ctx.get('cuaAccess').revoke('a'.repeat(64))
+  answer(allowTask())
+  assert.equal((await run).isError, true)
+  assert.deepEqual(first.nativeRequests.map(x => x.method), ['getApp'])
+  assert.equal(first.grant.signal.aborted, true)
+})
+
 test('task registration rejects forged root, foreign child, extra fields and invalid lifetimes', async t => {
   const f = await directTaskFixture(t)
   if (!f) return
@@ -461,6 +521,22 @@ test('revocation cancels in-flight native work and rejects later dispatch', asyn
   const before = f.nativeRequests.length
   assert.equal((await f.invoke({ method: 'getState', params: { appHandle: 'app-fixture', windowId: 7 } })).isError, true)
   assert.equal(f.nativeRequests.length, before)
+})
+
+test('revocation also drains the first native identity lookup before any question', async t => {
+  let entered
+  const pending = new Promise(resolve => { entered = resolve })
+  const f = await directTaskFixture(t, { nativeResponse: request => {
+    if (request.method === 'getApp') { entered(); return new Promise(() => {}) }
+    return { acted: true }
+  } })
+  if (!f) return
+  const run = f.invoke({ method: 'getApp', params: { selector: target.application } })
+  await pending
+  await f.grant.revoke()
+  assert.equal((await run).isError, true)
+  assert.equal(f.questions.length, 0)
+  assert.equal(f.ctx.get('cuaAccess').policy.tasks.size, 0)
 })
 
 test('expiry while the root question is pending admits no observation or input', async t => {
@@ -555,6 +631,18 @@ test('a denied root task cannot automatically create another worker for the same
   assert.equal(f.questions.length, 1)
 })
 
+test('a dismissed or failed human question requires new user input before another worker', async t => {
+  const f = await fixture({ officialCua: true, strict: true, script: taskScript(), humanAnswer: () => { throw new Error('synthetic human dialog dismissed') } })
+  if (!f.ctx.get('cuaTaskApproval')) { t.skip('requires local.2 task capability'); return }
+  await f.execute()
+  const count = f.seen.length
+  const result = (await f.execute()).results[0].result.value
+  assert.equal(result.reason, 'task_retry_requires_new_user_input')
+  assert.equal(f.seen.length, count)
+  assert.equal(f.questions.length, 1)
+  assert.deepEqual(f.nativeRequests.map(x => x.method), ['getApp'])
+})
+
 test('official task approval asks the true root for one child/window with no permanent option', async t => {
   let f
   f = await fixture({ officialCua: true, strict: true, script: taskScript(), humanAnswer: request => {
@@ -568,17 +656,22 @@ test('official task approval asks the true root for one child/window with no per
     return allowTask()
   } })
   if (!f.ctx.get('cuaTaskApproval')) { t.skip('requires local.2 task capability'); return }
-  f.ctx.get('cuaAccess').policy.options.store.withState = () => { throw new Error('task consent must not read/write saved application grants') }
+  const store = f.ctx.get('cuaAccess').policy.options.store
+  const withState = store.withState.bind(store)
+  store.withState = (signal, read) => withState(signal, ({ state }) => read({ state, save() { throw new Error('task consent must not write application grants') } }))
   const result = (await f.execute()).results[0].result.value
   assert.equal(result.status, 'completed', JSON.stringify(result))
   assert.equal(result.cleanup, 'drained')
   assert.equal(f.questions.length, 1)
   assert.deepEqual(f.nativeRequests.map(x => x.method), ['getApp', 'getState', 'setValue', 'getState'])
   assert.deepEqual(f.parent.agent.model.current(), { provider: 'deepseek', model: 'flash' })
+  assert.deepEqual(store.memory.applications, {})
 })
 
 test('denied and malformed task answers never dispatch observation or input', async t => {
   for (const answer of [
+    undefined, null, { answers: 'malformed' },
+    { answers: [{ id: 'cua-task-access', selected: ['Allow this task'], custom: 7 }] },
     { answers: [{ id: 'cua-task-access', selected: ['Deny'] }] },
     { answers: [{ id: 'cua-task-access', selected: ['Always allow'] }] },
     { answers: [{ id: 'cua-task-access', selected: ['Allow this task'], custom: 'override' }] },
@@ -591,6 +684,9 @@ test('denied and malformed task answers never dispatch observation or input', as
     assert.equal(value.cleanup, 'drained')
     assert.deepEqual(f.nativeRequests.map(x => x.method), ['getApp'])
     assert.equal(f.questions.length, 1)
+    const before = f.seen.length
+    assert.equal((await f.execute()).results[0].result.value.reason, 'task_retry_requires_new_user_input')
+    assert.equal(f.seen.length, before)
   }
 })
 

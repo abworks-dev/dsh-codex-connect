@@ -16,9 +16,12 @@ if (process.argv.length > 2 && (!withLocalPatch || process.argv.length !== 3)) t
 const version = process.env.DSH_CUA_HOST_VERSION ?? '0.2.2-alpha.2'
 if (!['0.2.2-alpha.2', '0.2.2-alpha.2.codex-cua-local.1', '0.2.2-alpha.2.codex-cua-local.2'].includes(version) || version !== '0.2.2-alpha.2' && !supplied) throw new Error('Local CUA checks require an explicit isolated candidate fixture')
 const fixture = supplied ? resolve(supplied) : await mkdtemp(join(tmpdir(), 'codex-cua-published-host-'))
-const env = { ...scrubCanaryEnvironment(process.env), NPM_CONFIG_USERCONFIG: '/dev/null', NPM_CONFIG_GLOBALCONFIG: '/dev/null', DSH_TELEMETRY_MODE: 'DISABLED' }
-async function command(binary, args) {
-  const result = await runBoundedCommand(binary, args, { cwd: fixture, env, timeoutMs: 15 * 60 * 1000 })
+const configDir = await mkdtemp(join(fixture, 'empty-package-config-'))
+await writeFile(join(configDir, 'user.npmrc'), '')
+await writeFile(join(configDir, 'global.npmrc'), '')
+const env = { ...scrubCanaryEnvironment(process.env), NPM_CONFIG_USERCONFIG: join(configDir, 'user.npmrc'), NPM_CONFIG_GLOBALCONFIG: join(configDir, 'global.npmrc'), DSH_TELEMETRY_MODE: 'DISABLED' }
+async function command(binary, args, options = {}) {
+  const result = await runBoundedCommand(binary, args, { cwd: options.cwd ?? fixture, env: { ...env, ...options.env }, timeoutMs: 15 * 60 * 1000 })
   if (result.status !== 0 || result.error) throw new Error(`${binary} check failed: ${result.stderr.slice(-4000)}\n${result.stdout.slice(-4000)}`)
   return result
 }
@@ -69,6 +72,18 @@ try {
         if (result.status !== 0 || result.error) throw new Error(`Local Host composition failed: ${result.stderr.slice(-4000)}\n${result.stdout.slice(-4000)}`)
         process.stdout.write(result.stdout)
       }
+      // The local permission candidate also has to preserve ordinary installed
+      // Connect behavior. This is a scripted, keyless profile, never a live service.
+      const packed = JSON.parse((await command('npm', ['pack', '--ignore-scripts', '--json', '--pack-destination', localRoot], { cwd: root })).stdout)
+      if (packed.length !== 1 || !/^[a-z0-9.-]+\.tgz$/u.test(packed[0].filename)) throw new Error('Unexpected packed Connect artifact')
+      const home = join(localRoot, 'home')
+      const localEnv = { DSH_HOME: home }
+      await command(process.execPath, [join(local, 'runtime/node_modules/@deepseek-ai/dsh/lib/bin.js'), 'plugin', '--profile', 'web', 'add', join(localRoot, packed[0].filename), '--ignore-scripts'], { env: localEnv })
+      const installed = await command(process.execPath, [join(root, 'scripts/check-installed-runtime.mjs'), join(home, 'profiles/web/package.json'), join(local, 'runtime/package.json')], { env: localEnv })
+      process.stdout.write(installed.stdout)
     } finally { await rm(localRoot, { recursive: true, force: true }) }
   }
-} finally { if (!supplied) await rm(fixture, { recursive: true, force: true }) }
+} finally {
+  await rm(configDir, { recursive: true, force: true })
+  if (!supplied) await rm(fixture, { recursive: true, force: true })
+}
