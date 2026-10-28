@@ -1,7 +1,7 @@
 /** Public DSH child identity + Native executor + standard tool pipeline. No PTC code transport. */
 import { randomUUID } from 'node:crypto'
 import { SessionId } from '@deepseek-ai/dsh-session'
-import { createUserMessage, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
+import { createUserMessage, isAgentLoopRequest, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import { NativeToolExecutor } from '@deepseek-ai/dsh-tool-executor-native'
 import { appendDelegatedPolicyOverrides } from '@deepseek-ai/dsh-subagent'
 import { acquireDesktopLease } from './lease.mjs'
@@ -129,8 +129,9 @@ export function computerUseTool(ctx, config, acquireLease = acquireDesktopLease)
                 if (state.blocked) abort.abort('blocked')
               })
               childCtx.tools.guard(exec => {
+                if (exec.agent !== child) return undefined
                 try { check() } catch { return 'CUA_RUN_CLOSED' }
-                if (exec.agent !== child || ctx.agents.get(child.id) !== child || state.proposal) return 'CUA_WORKER_IDENTITY_OR_TERMINAL'
+                if (ctx.agents.get(child.id) !== child || state.proposal) return 'CUA_WORKER_IDENTITY_OR_TERMINAL'
                 if (exec.name === FINISH) return undefined
                 if (exec.name !== 'cua') { state.blocked = 'tool_policy_denied'; abort.abort('tool_denied'); return 'CUA_TOOL_DENIED' }
                 if (++state.operations > config.maxOperations) { state.blocked = 'operation_budget_exhausted'; abort.abort('budget'); return 'CUA_OPERATION_BUDGET' }
@@ -140,8 +141,9 @@ export function computerUseTool(ctx, config, acquireLease = acquireDesktopLease)
                 return denied
               })
               childCtx.on('agent/pre-step', async (event, next) => {
+                if (event.agent !== child) return next()
                 check()
-                if (event.agent !== child || ++state.requests > config.maxSteps) { state.blocked = 'step_budget_exhausted'; abort.abort('budget'); return { kind: 'reject' } }
+                if (++state.requests > config.maxSteps) { state.blocked = 'step_budget_exhausted'; abort.abort('budget'); return { kind: 'reject' } }
                 if (event.modelSelection.provider !== ROUTE.provider || event.modelSelection.model !== ROUTE.model || event.modelSelection.reasoningEffort !== ROUTE.reasoningEffort) {
                   state.blocked = 'worker_route_changed'; abort.abort('route_changed'); return { kind: 'reject' }
                 }
@@ -150,6 +152,9 @@ export function computerUseTool(ctx, config, acquireLease = acquireDesktopLease)
               // Reserve or another parent routing plugin must not change this
               // dedicated worker's actual request after pre-step selection.
               childCtx.on('llm/stream', async function* (request, next) {
+                // Cordis listeners can observe other Agent and Host auxiliary
+                // calls. Only this child's canonical loop request owns this guard.
+                if (request.sessionId !== child.id || !isAgentLoopRequest(request)) { yield* next(); return }
                 check()
                 if (request.provider !== ROUTE.provider || request.model !== ROUTE.model || request.reasoningEffort !== ROUTE.reasoningEffort) {
                   state.blocked = 'worker_route_changed'; abort.abort('route_changed'); throw new Error('CUA_WORKER_ROUTE_CHANGED')

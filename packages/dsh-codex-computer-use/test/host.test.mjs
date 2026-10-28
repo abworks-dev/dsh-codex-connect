@@ -8,7 +8,7 @@ import { PassThrough, Writable } from 'node:stream'
 import { Context } from '@deepseek-ai/cordis'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
 import Include from '@deepseek-ai/cordis-plugin-include'
-import Llm, { LlmAdapter, ReasoningEffortId, ToolCallId, createUserMessage } from '@deepseek-ai/dsh-llm'
+import Llm, { LlmAdapter, ReasoningEffortId, ToolCallId, createUserMessage, markAgentLoopRequest } from '@deepseek-ai/dsh-llm'
 import Sessions, { SessionId } from '@deepseek-ai/dsh-session'
 import Projection from '@deepseek-ai/dsh-session-projection'
 import { AgentRegistry } from '@deepseek-ai/dsh-agent'
@@ -58,6 +58,12 @@ async function fixture({ script, cua, officialCua = false, strict = false, confi
     async resolveModel(provider, id) { return { provider, id, name: 'Fixture', reasoning: { efforts: [{ id: ReasoningEffortId('high'), name: 'high' }] } } }
     async *stream(options) {
       seen.push(options)
+      if (options.model === 'fixture-unrelated') {
+        yield { type: 'block-start', index: 0, blockType: 'text' }
+        yield { type: 'block-end', index: 0, block: { type: 'text', text: 'unrelated request completed' } }
+        yield { type: 'finish', reason: { kind: 'stop' } }
+        return
+      }
       const blocks = script ?? [call('cua', { method: 'getApp', params: { selector: target.application } }),
         call('cua', { method: 'screenshot', params: { appHandle: 'app-fixture', windowId: 7 } }),
         call('cua', { method: 'click', params: { appHandle: 'app-fixture', windowId: 7, x: 20, y: 20 } }),
@@ -136,6 +142,55 @@ test('independent Terra child uses the real Native pipeline and leaves the Flash
   assert.deepEqual(f.parent.agent.model.current(), { provider: 'deepseek', model: 'flash' })
   assert.equal(value.effectiveModel.model, ROUTE.model)
   assert.equal(value.acceptance, 'not_independently_verified')
+})
+
+test('active worker hooks leave unrelated Host requests and agent steps unchanged', async () => {
+  let ready, release
+  const entered = new Promise(resolve => { ready = resolve })
+  const resume = new Promise(resolve => { release = resolve })
+  let worker
+  const f = await fixture({ cua: async (args, exec) => {
+    if (args.method === 'getApp') { worker = exec.agent; ready(); await resume; return { appHandle: 'app-fixture' } }
+    return args.method === 'screenshot' ? { windowId: 7 } : { acted: true }
+  } })
+  const running = f.execute()
+  await entered
+  try {
+    for (const context of [f.ctx, worker.ctx]) {
+      const chunks = []
+      for await (const chunk of context.llm.stream({ provider: ROUTE.provider, model: 'fixture-unrelated', sessionId: worker.id, messages: [], signal: new AbortController().signal })) chunks.push(chunk)
+      assert.equal(chunks.at(-1).reason.kind, 'stop')
+    }
+    const answer = await worker.ctx.waterfall(f.parent.agent, 'agent/pre-step', {
+      agent: f.parent.agent, modelSelection: { provider: 'deepseek', model: 'flash' }, signal: new AbortController().signal,
+    }, async () => ({ kind: 'continue' }))
+    assert.equal(answer.kind, 'continue')
+  } finally { release() }
+  const batch = await running
+  assert.equal(batch.results[0].result.value.status, 'completed')
+  assert.equal(f.dispatched.length, 4)
+})
+
+test('actual worker loop dispatch still rejects a changed route before the adapter', async () => {
+  let ready, release, worker
+  const entered = new Promise(resolve => { ready = resolve })
+  const resume = new Promise(resolve => { release = resolve })
+  const f = await fixture({ cua: async (_args, exec) => {
+    worker = exec.agent; ready(); await resume; return { appHandle: 'app-fixture' }
+  } })
+  const running = f.execute()
+  await entered
+  try {
+    await assert.rejects(async () => {
+      for await (const _chunk of worker.ctx.llm.stream(markAgentLoopRequest({
+        provider: ROUTE.provider, model: 'fixture-unrelated', reasoningEffort: ReasoningEffortId('high'),
+        sessionId: worker.id, messages: [], signal: new AbortController().signal,
+      }))) { /* consume the guarded dispatch */ }
+    }, /CUA_WORKER_ROUTE_CHANGED/)
+  } finally { release() }
+  const batch = await running
+  assert.equal(batch.results[0].result.value.reason, 'worker_route_changed')
+  assert.equal(f.seen.length, 1)
 })
 
 test('an inherited shell and run_code cannot execute', async () => {
