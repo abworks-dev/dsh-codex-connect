@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Operator-recorded synthetic or local Computer Use trial",
   "type": "object",
-  "required": ["schemaVersion", "evidence", "arm", "taskId", "pairId", "repeat", "status", "success", "wrongActions", "elapsedMs", "usage", "humanInterventions", "environment"],
+  "required": ["schemaVersion", "evidence", "arm", "taskId", "pairId", "repeat", "status", "success", "wrongActions", "elapsedMs", "timeoutMs", "usage", "humanInterventions", "environment"],
   "properties": {
     "schemaVersion": { "const": 1 },
     "evidence": { "enum": ["synthetic", "live"] },
@@ -15,6 +15,7 @@
     "code": { "type": ["string", "null"] },
     "wrongActions": { "type": "integer", "minimum": 0 },
     "elapsedMs": { "type": "number", "minimum": 0 },
+    "timeoutMs": { "type": "integer", "minimum": 1 },
     "humanInterventions": { "type": "integer", "minimum": 0 },
     "usage": {
       "type": "object", "required": ["modelCalls", "inputTokens", "outputTokens", "visibleCost"],
@@ -30,12 +31,15 @@
     },
     "environment": {
       "type": "object",
-      "required": ["hardware", "os", "applicationVersion", "toolRuntimeVersion", "model", "effort", "serviceTier", "fixtureHash", "initialStateHash", "screen"],
+      "required": ["hardware", "os", "applicationVersion", "toolRuntimeVersion", "model", "effort", "serviceTier", "requestedModel", "requestedEffort", "requestedServiceTier", "toolRoute", "measurementStratum", "promptHash", "fixtureHash", "initialStateHash", "screen"],
       "properties": {
         "hardware": { "$ref": "#/$defs/knownOrNull" }, "os": { "$ref": "#/$defs/knownOrNull" },
         "applicationVersion": { "$ref": "#/$defs/knownOrNull" }, "toolRuntimeVersion": { "$ref": "#/$defs/knownOrNull" },
         "model": { "$ref": "#/$defs/knownOrNull" }, "effort": { "$ref": "#/$defs/knownOrNull" },
         "serviceTier": { "$ref": "#/$defs/knownOrNull" }, "fixtureHash": { "$ref": "#/$defs/knownOrNull" },
+        "requestedModel": { "$ref": "#/$defs/knownOrNull" }, "requestedEffort": { "$ref": "#/$defs/knownOrNull" },
+        "requestedServiceTier": { "$ref": "#/$defs/knownOrNull" }, "toolRoute": { "$ref": "#/$defs/knownOrNull" },
+        "measurementStratum": { "$ref": "#/$defs/knownOrNull" }, "promptHash": { "$ref": "#/$defs/knownOrNull" },
         "initialStateHash": { "$ref": "#/$defs/knownOrNull" },
         "screen": { "type": "object", "required": ["width", "height", "dpr", "zoom"], "properties": {
           "width": { "$ref": "#/$defs/scale" }, "height": { "$ref": "#/$defs/scale" },

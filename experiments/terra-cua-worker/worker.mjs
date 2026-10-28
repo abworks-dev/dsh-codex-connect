@@ -39,6 +39,7 @@ export class MockLease {
       release: () => { if (this.#owner === token) this.#owner = undefined; } };
   }
   get busy() { return this.#owner !== undefined; }
+  invalidate() { this.#owner = undefined; }
 }
 
 export class MockHost {
@@ -126,7 +127,7 @@ export async function runMockTask({ parent, taskId, host, lease, plan, signal, t
     catch { status = 'uncertain'; code = 'CLEANUP_UNCONFIRMED'; }
   }
   if (JSON.stringify(parent.route) !== parentRoute) throw new Error('PARENT_ROUTE_MUTATED');
-  return { schemaVersion: 1, evidence: 'synthetic', arm: 'mock', taskId, status, code,
+  return { schemaVersion: 1, evidence: 'synthetic', arm: 'mock', taskId, status, code, timeoutMs,
     parentRoute: JSON.parse(parentRoute), workerRoute: child?.route ?? null,
     elapsedMs: performance.now() - started, ...host.result(), success: status === 'completed' && host.result().success,
     usage: { modelCalls: 0, inputTokens: null, outputTokens: null, visibleCost: null }, humanInterventions: 0 };

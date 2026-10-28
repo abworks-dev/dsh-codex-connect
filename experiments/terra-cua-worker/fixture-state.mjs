@@ -47,7 +47,7 @@ export function transition(state, operation) {
     if (state.taskId === 'recover' && target === 'Confirm recovery' && state.retry) { next.recovered = true; accepted = true; }
   }
   if (method === 'setValue' && state.taskId === 'form' && ['Name', 'Code'].includes(params.target)) {
-    next[params.target.toLowerCase()] = params.value; accepted = true;
+    next[params.target.toLowerCase()] = params.value; next.submitted = false; accepted = true;
   }
   if (method === 'scroll' && state.taskId === 'scroll' && params.target === 'list' && params.direction === 'down') {
     next.offset = Math.min(18, state.offset + 6); accepted = true;
@@ -57,6 +57,6 @@ export function transition(state, operation) {
 }
 
 export function verify(state) {
-  return state.wrongActions === 0 && ({ locate: state.selected === 'Cobalt', form: state.submitted,
+  return state.wrongActions === 0 && ({ locate: state.selected === 'Cobalt', form: state.submitted && state.name === 'Ada Test' && state.code === 'LAB-204',
     scroll: state.selected === 'Item 24', steps: state.stage === 2, recover: state.recovered })[state.taskId];
 }
