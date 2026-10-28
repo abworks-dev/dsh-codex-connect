@@ -1,5 +1,7 @@
 # DSH 0.2.1-rc.4 compatibility candidate — 2026-10-28
 
+This records the initial rc.4-only stage at source `ac73103b39b67e0bec255df3de51fc20d6d4e20a`. Its archive `5068c416…` and matrix remain historical evidence. After #397 merged, the combined Alpha 11 source and its distinct acceptance identity are recorded in the [joint acceptance report](alpha11-joint-acceptance.md); the results below must not be reused as that combined package's acceptance.
+
 Issue [#396](https://github.com/franksong2702/dsh-codex-connect/issues/396) preserves the original stock next-canary refusal at `2e6a9d7a4d2ec7833003311745ff139056bc399f`, [run 40475574233](https://github.com/franksong2702/dsh-codex-connect/actions/runs/40475574233). It is an exact-support declaration gap, not an established runtime regression. This independent branch starts at main `ed099b7119ab258f78d020b92d1bf9f1a666518d`; it does not depend on or merge external PR #397.
 
 ## Published-package evidence
