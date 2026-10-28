@@ -5,9 +5,11 @@ import { createRequire } from 'node:module'
 import { dirname, join, resolve, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
+import { assertClosure, publishedTarball, verifyPublishedPackage } from './provenance.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const spec = JSON.parse(await readFile(join(here, 'manifest.json'), 'utf8'))
+const lock = JSON.parse(await readFile(join(here, 'published-lock.json'), 'utf8'))
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex')
 const thirdParty = { '@deepseek-ai/cordis': '4.0.6-alpha.1', '@deepseek-ai/schemastery': '3.18.6-alpha.1', '@deepseek-ai/cordis-plugin-loader': '1.0.7-alpha.1', '@deepseek-ai/cordis-plugin-include': '1.0.11-alpha.1' }
 function command(binary, args, cwd) {
@@ -21,17 +23,21 @@ export async function prepareLocalHost(publishedFixture, output, { native = fals
   await mkdir(target)
   const require = createRequire(join(source, 'package.json'))
   const input = JSON.parse(await readFile(join(source, 'package.json'), 'utf8'))
-  const names = Object.keys(input.dependencies).filter(name => /^@deepseek-ai\/dsh(?:-[a-z0-9-]+)?$/u.test(name))
-  if (names.length < 1 || names.length > 512 || !names.includes('@deepseek-ai/dsh')) throw new Error('Expected the exact published DSH closure')
+  const names = assertClosure(input.dependencies, lock, spec)
   const packages = join(target, 'packages')
   await mkdir(packages)
+  let verified = 0
   for (const name of names) {
     const original = require.resolve(`${name}/package.json`)
-    const metadata = JSON.parse(await readFile(original, 'utf8'))
-    if (metadata.name !== name || metadata.version !== spec.baseVersion) throw new Error(`Not the original exact package: ${name}`)
+    const archive = await publishedTarball(join(source, 'verified-tarballs'), name, lock.packages[name])
     const destination = join(packages, name.slice('@deepseek-ai/'.length))
-    await cp(dirname(original), destination, { recursive: true, dereference: true,
+    await cp(dirname(original), destination, { recursive: true, dereference: false,
       filter: path => !relative(dirname(original), path).split(/[\\/]/u).some(part => part === 'node_modules' || part === '.build') })
+    // Validate the copied bytes we will actually patch, rather than a prior
+    // observation of a mutable input directory. Links are never dereferenced.
+    await verifyPublishedPackage(destination, archive, lock.packages[name].integrity, target)
+    const metadata = JSON.parse(await readFile(join(destination, 'package.json'), 'utf8'))
+    if (metadata.name !== name || metadata.version !== spec.baseVersion) throw new Error(`Not the original exact package: ${name}`)
     const patch = spec.packages[name]
     if (patch) {
       const patchBytes = await readFile(join(here, patch.patch))
@@ -51,6 +57,7 @@ export async function prepareLocalHost(publishedFixture, output, { native = fals
     metadata.dshLocalCandidate = { id: spec.id, baseVersion: spec.baseVersion, published: false,
       sourcePatchSha256: patch?.patchSha256 ?? null }
     await writeFile(join(destination, 'package.json'), `${JSON.stringify(metadata, null, 2)}\n`)
+    if (++verified % 50 === 0 || verified === names.length) process.stderr.write(`Verified and prepared ${verified}/${names.length} complete published packages\n`)
   }
   const nativeRoot = join(packages, 'dsh-experimental-cua-macos', 'native')
   let nativeSha256 = null
@@ -61,6 +68,7 @@ export async function prepareLocalHost(publishedFixture, output, { native = fals
     const sources = (await readdir(sourceDir)).filter(name => name.endsWith('.swift')).sort().map(name => join(sourceDir, name))
     const binary = join(nativeRoot, 'bin/darwin-arm64/dsh-cua-native')
     await mkdir(dirname(binary), { recursive: true })
+    process.stderr.write('Compiling local macOS arm64 native helper; it will not be executed\n')
     command('xcrun', ['swiftc', '-O', '-whole-module-optimization', '-swift-version', '6', '-parse-as-library',
       '-module-name', 'CuaNative', '-target', 'arm64-apple-macos14.0', '-module-cache-path', join(target, 'compiler-cache'), ...sources, '-o', binary], target)
     nativeSha256 = sha256(await readFile(binary))
@@ -73,6 +81,7 @@ export async function prepareLocalHost(publishedFixture, output, { native = fals
   await writeFile(join(runtime, 'package.json'), `${JSON.stringify({ private: true, dependencies, overrides, pnpm: { overrides } }, null, 2)}\n`)
   const report = { schemaVersion: 1, id: spec.id, baseVersion: spec.baseVersion, version: spec.candidateVersion,
     published: false, dshPackages: names.length, patchManifestSha256: sha256(await readFile(join(here, 'manifest.json'))),
+    sourceLockSha256: sha256(await readFile(join(here, 'published-lock.json'))), wholePublishedPackagesVerified: names.length,
     nativeBuilt: native, nativeSha256, nativeExecuted: false, deployed: false }
   await writeFile(join(target, 'candidate.json'), `${JSON.stringify(report, null, 2)}\n`)
   return report

@@ -27,8 +27,10 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24.x'
-      - name: Verify exact published CUA Host composition with no live model or desktop
-        run: node scripts/check-cua-host.mjs
+      - name: Verify complete-source provenance failure cases
+        run: node --test host-patches/codex-cua-local.1/provenance.test.mjs
+      - name: Verify published and local CUA Host composition with no live model or desktop
+        run: node scripts/check-cua-host.mjs --with-local-patch
 
   validate:
     strategy:

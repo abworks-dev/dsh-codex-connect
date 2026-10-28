@@ -8,19 +8,27 @@
     "architecture": "arm64",
     "compiler": "Apple Swift 6.4",
     "languageMode": 6,
-    "sha256": "053a8040191bcc86a7928d85ee2970d7f03fdb19285f787bd216577619341f50",
-    "executed": false
+    "sha256": "7fa8c12ebd5c7106b33c79fed342517593559641963a902a8b178a926ae6bea0",
+    "executed": false,
+    "buildScope": "current strict-pointer and AX source, candidate 5; compiled only"
   },
   "validation": {
-    "pureWindowScopeFixture": "passed; synthetic integer owners only",
-    "routeBehaviorFixtures": "4 passed on prior route kernel; current live-service marker integration pending",
+    "pureWindowScopeFixture": "passed including strict pointer route mismatch; synthetic integer owners only",
+    "routeBehaviorFixtures": "4 passed on exact candidate 5; actual live-service marker included",
     "oldHostReserveAndCompatibility": "64 passed",
-    "currentInstalledConnectRuntime": "not yet rerun after live-service detection fix",
+    "currentInstalledConnectRuntime": "candidate 5: passed full installed-runtime suite with synthetic responses; no real models/native helper",
     "priorInstalledConnectRuntime": "failed at Reserve before expected request/header",
-    "desktopOrLiveModels": "not executed"
+    "desktopOrLiveModels": "not executed",
+    "sourceCheck": "pnpm check: 2382 passed, 2 skipped; build, typecheck and packaging passed",
+    "browser": "97 passed in 14 files using isolated Playwright",
+    "companion": "local candidate: 19 passed including actual plugin entry/single provider; stock: 18 passed, 1 async-route-specific skip",
+    "provenance": "2 deterministic tests passed; all 321 copied original packages matched verified locked npm tarballs; final builder completed",
+    "wholeCiComposition": "published + local build/install/scripted worker + routing flow passed before final entry-smoke addition; latest entry smoke and worker tests passed separately"
   },
   "deployment": "not attempted; original target retained",
-  "nativeBuildPatchManifestSha256": "242e9de5cd3123d9d0b41f6cb82b9ddbe25b1f987e2fbcb10f6ee0064c5f7f0f",
-  "currentPatchManifestSha256": "33c58ff9ee43781aa920cb577e1333f79c9b9ba669335c007977ed8a113bd123",
-  "nativeBuildSourceContentMatchesCurrentManifest": true
+  "nativeBuildPatchManifestSha256": "47eef459f42d59d897a97ef73709e8e7bb7dec8b25932b1924de802fd35597ca",
+  "currentPatchManifestSha256": "47eef459f42d59d897a97ef73709e8e7bb7dec8b25932b1924de802fd35597ca",
+  "nativeBuildSourceContentMatchesCurrentManifest": true,
+  "sourceLockSha256": "f0e6d92a962de7e6a0504276567dd6bd7815eb2d9aae4414ac96e353f7148344",
+  "wholePublishedPackagesVerified": 321
 }

@@ -7,10 +7,14 @@ import { fileURLToPath } from 'node:url'
 import { runBoundedCommand } from './bounded-command.mjs'
 import { scrubCanaryEnvironment } from './canary-environment.mjs'
 import { resolveExactDshOverrides, exactDshFixtureManifest, readDshRegistryManifest } from './exact-dsh-fixture.mjs'
+import { prepareLocalHost } from '../host-patches/codex-cua-local.1/prepare-local-host.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const version = '0.2.2-alpha.2'
 const supplied = process.env.DSH_CUA_FIXTURE
+const withLocalPatch = process.argv[2] === '--with-local-patch'
+if (process.argv.length > 2 && (!withLocalPatch || process.argv.length !== 3)) throw new Error('usage: check-cua-host.mjs [--with-local-patch]')
+const version = process.env.DSH_CUA_HOST_VERSION ?? '0.2.2-alpha.2'
+if (!['0.2.2-alpha.2', '0.2.2-alpha.2.codex-cua-local.1'].includes(version) || version !== '0.2.2-alpha.2' && !supplied) throw new Error('Local CUA checks require an explicit isolated candidate fixture')
 const fixture = supplied ? resolve(supplied) : await mkdtemp(join(tmpdir(), 'codex-cua-published-host-'))
 const env = { ...scrubCanaryEnvironment(process.env), NPM_CONFIG_USERCONFIG: '/dev/null', NPM_CONFIG_GLOBALCONFIG: '/dev/null', DSH_TELEMETRY_MODE: 'DISABLED' }
 async function command(binary, args) {
@@ -44,9 +48,27 @@ try {
   const candidate = await mkdtemp(join(fixture, 'computer-use-candidate-'))
   try {
     await cp(join(root, 'packages/dsh-codex-computer-use'), candidate, { recursive: true })
-    const result = await command(process.execPath, ['--test', join(candidate, 'test/host.test.mjs')])
+    const result = await command(process.execPath, ['--test', join(candidate, 'test/host.test.mjs'), join(candidate, 'test/installation.test.mjs')])
     process.stdout.write(result.stdout)
     const report = { schemaVersion: 1, dshVersion: version, provider: 'scripted_in_memory', cuaTransport: 'synthetic', realModelRequests: 0, desktopActions: 0, parityAccepted: false }
     process.stdout.write(`${JSON.stringify(report)}\n`)
   } finally { await rm(candidate, { recursive: true, force: true }) }
+  if (withLocalPatch) {
+    if (version !== '0.2.2-alpha.2') throw new Error('Patch preparation requires the original published fixture')
+    const localRoot = await mkdtemp(join(fixture, 'local-patch-'))
+    try {
+      const local = join(localRoot, 'candidate')
+      await prepareLocalHost(fixture, local)
+      await command('pnpm', ['--dir', join(local, 'runtime'), '--ignore-workspace', '--config.minimum-release-age=0', 'install', '--ignore-scripts'])
+      for (const [script, variables] of [
+        [join(root, 'scripts/check-cua-host.mjs'), { DSH_CUA_FIXTURE: join(local, 'runtime'), DSH_CUA_HOST_VERSION: '0.2.2-alpha.2.codex-cua-local.1' }],
+        [join(root, 'host-patches/codex-cua-local.1/route.test.mjs'), { DSH_LOCAL_FIXTURE: join(local, 'runtime') }],
+      ]) {
+        const args = script.endsWith('.test.mjs') ? ['--test', script] : [script]
+        const result = await runBoundedCommand(process.execPath, args, { cwd: fixture, env: { ...env, ...variables }, timeoutMs: 60_000 })
+        if (result.status !== 0 || result.error) throw new Error(`Local Host composition failed: ${result.stderr.slice(-4000)}\n${result.stdout.slice(-4000)}`)
+        process.stdout.write(result.stdout)
+      }
+    } finally { await rm(localRoot, { recursive: true, force: true }) }
+  }
 } finally { if (!supplied) await rm(fixture, { recursive: true, force: true }) }

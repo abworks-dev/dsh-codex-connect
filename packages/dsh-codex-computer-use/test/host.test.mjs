@@ -34,11 +34,14 @@ function *toolStream(block) {
   yield { type: 'finish', reason: { kind: 'tool-call' } }
 }
 
-async function fixture({ script, cua, officialCua = false, config = {} } = {}) {
+async function fixture({ script, cua, officialCua = false, strict = false, config = {} } = {}) {
   const directory = await mkdtemp(join(tmpdir(), 'codex-cua-host-'))
   owned.push(() => rm(directory, { recursive: true, force: true }))
   const ctx = new Context()
   owned.push(() => ctx.fiber.dispose())
+  const scopeFiber = strict ? await ctx.plugin({ apply(scopeCtx) {
+    scopeCtx.provide('cuaWindowScope', Object.freeze({ version: 1, strictWindowScope: true }))
+  } }) : undefined
   ctx.baseUrl = new URL(`file://${directory}/`).href
   await ctx.plugin(Loader)
   ctx.loader.builtins.include = Include
@@ -104,7 +107,7 @@ async function fixture({ script, cua, officialCua = false, config = {} } = {}) {
         dispatched.push({ args, agent: exec.agent })
         if (cua) return cua(args, exec)
         if (args.method === 'getApp') return { appHandle: 'app-fixture' }
-        if (args.method === 'getState') return { windowId: 7, snapshotId: 'snapshot-fixture' }
+        if (args.method === 'getState') return { windowId: 7, appHandle: 'app-fixture', snapshotId: 'snapshot-fixture', ...(strict ? { windowScope: 'strict-window' } : {}) }
         if (args.method === 'screenshot') return { windowId: 7 }
         return { acted: true }
       },
@@ -116,7 +119,7 @@ async function fixture({ script, cua, officialCua = false, config = {} } = {}) {
   ctx.tools.register(tool)
   const controller = new AbortController()
   const execute = () => ctx.tools.execute({ agent: parent.agent, calls: [call(TOOL, { goal: 'Complete the synthetic UI task' })], signal: controller.signal })
-  return { ctx, parent, seen, dispatched, execute, controller, directory }
+  return { ctx, parent, seen, dispatched, execute, controller, directory, scopeFiber }
 }
 
 test('independent Terra child uses the real Native pipeline and leaves the Flash parent route unchanged', async () => {
@@ -165,17 +168,102 @@ test('a pre-input screenshot cannot support a completed result after input', asy
   assert.notEqual(batch.results[0].result.value.status, 'completed')
 })
 
-test('multi-call batches cannot race a refusal or observation update against later input', async () => {
-  for (const grouped of [
-    [call('cua', { method: 'screenshot', params: { appHandle: 'app-fixture', windowId: 7 } }), call('cua', { method: 'click', params: { appHandle: 'app-fixture', windowId: 7, x: 20, y: 20 } })],
-    [call('cua', { method: 'scroll', params: { appHandle: 'app-fixture', windowId: 7, x: 20, y: 20, deltaLinesY: 2, deltaLinesX: 0 } }), call('finish_computer_use', { status: 'completed', summary: 'unverified' })],
+test('a result refusal in a batch stops later input before transport', async () => {
+  const f = await fixture({ script: [call('cua', { method: 'getApp', params: { selector: target.application } }), [
+    call('cua', { method: 'screenshot', params: { appHandle: 'app-fixture', windowId: 7 } }),
+    call('cua', { method: 'click', params: { appHandle: 'app-fixture', windowId: 7, x: 20, y: 20 } }),
+  ]], cua: async args => {
+    if (args.method === 'getApp') return { appHandle: 'app-fixture' }
+    throw new Error('APP_ACCESS_REVOKED: synthetic refusal')
+  } })
+  const batch = await f.execute()
+  assert.equal(batch.results[0].result.value.reason, 'application_access_revoked')
+  assert.deepEqual(f.dispatched.map(row => row.args.method), ['getApp', 'screenshot'])
+})
+
+test('sequential batch input invalidates an earlier observation before finish', async () => {
+  const f = await fixture({ script: [call('cua', { method: 'getApp', params: { selector: target.application } }), [
+    call('cua', { method: 'screenshot', params: { appHandle: 'app-fixture', windowId: 7 } }),
+    call('cua', { method: 'click', params: { appHandle: 'app-fixture', windowId: 7, x: 20, y: 20 } }),
+    call('finish_computer_use', { status: 'completed', summary: 'unverified' }),
+  ]] })
+  const batch = await f.execute()
+  assert.notEqual(batch.results[0].result.value.status, 'completed')
+})
+
+test('strict Host attestation admits form input and element clicks in a bounded sequential batch', async () => {
+  const f = await fixture({ strict: true, script: [
+    call('cua', { method: 'getApp', params: { selector: target.application } }),
+    call('cua', { method: 'getState', params: { appHandle: 'app-fixture', windowId: 7, includeMenus: false } }),
+    [call('cua', { method: 'setValue', params: { appHandle: 'app-fixture', snapshotId: 'snapshot-fixture', elementIndex: 2, value: 'Synthetic Name' } }),
+      call('cua', { method: 'setValue', params: { appHandle: 'app-fixture', snapshotId: 'snapshot-fixture', elementIndex: 3, value: 'Synthetic Code' } }),
+      call('cua', { method: 'click', params: { appHandle: 'app-fixture', snapshotId: 'snapshot-fixture', elementIndex: 4 } }),
+      call('cua', { method: 'getState', params: { appHandle: 'app-fixture', windowId: 7, includeMenus: false } }),
+      call('finish_computer_use', { status: 'completed', summary: 'Synthetic form observed' })],
+  ] })
+  const batch = await f.execute()
+  assert.equal(batch.results[0].result.value.status, 'completed')
+  assert.equal(batch.results[0].result.value.modelSteps, 3)
+  assert.deepEqual(f.dispatched.map(row => row.args.method), ['getApp', 'getState', 'setValue', 'setValue', 'click', 'getState'])
+})
+
+test('strict capability without matching native snapshot attestation is blocked', async () => {
+  for (const value of [
+    { appHandle: 'app-fixture', windowId: 7, snapshotId: 's' },
+    { windowScope: 'strict-window', appHandle: 'foreign', windowId: 7, snapshotId: 's' },
+    { windowScope: 'strict-window', appHandle: 'app-fixture', windowId: 8, snapshotId: 's' },
   ]) {
-    const f = await fixture({ script: [call('cua', { method: 'getApp', params: { selector: target.application } }), grouped] })
+    const f = await fixture({ strict: true, script: [
+      call('cua', { method: 'getApp', params: { selector: target.application } }),
+      call('cua', { method: 'getState', params: { appHandle: 'app-fixture', windowId: 7, includeMenus: false } }),
+      call('cua', { method: 'setValue', params: { appHandle: 'app-fixture', snapshotId: 's', elementIndex: 2, value: 'must not run' } }),
+    ], cua: async args => args.method === 'getApp' ? { appHandle: 'app-fixture' } : value })
     const batch = await f.execute()
-    assert.equal(batch.results[0].result.value.status, 'blocked')
-    assert.equal(batch.results[0].result.value.reason, 'single_call_required')
-    assert.equal(f.dispatched.length, 1)
+    assert.equal(batch.results[0].result.value.reason, 'host_window_scope_unverified')
+    assert.equal(f.dispatched.length, 2)
   }
+})
+
+test('strict AX rejects menu requests and unobserved snapshot identities', () => {
+  const scope = { strict: true, snapshotId: 'admitted' }
+  assert.equal(operationDenial({ method: 'getState', params: { appHandle: 'a', windowId: 7, includeMenus: true } }, target, 'a', scope), 'CUA_MENU_INPUT_DENIED')
+  assert.equal(operationDenial({ method: 'setValue', params: { appHandle: 'a', snapshotId: 'stolen', elementIndex: 1, value: 'x' } }, target, 'a', scope), 'CUA_SNAPSHOT_DENIED')
+})
+
+test('unloading the strict CUA provider invalidates the active worker capability', async () => {
+  let f
+  f = await fixture({ strict: true, cua: async args => {
+    if (args.method === 'getApp') { await f.scopeFiber.dispose(); return { appHandle: 'app-fixture' } }
+    throw new Error('must not reach transport')
+  } })
+  const batch = await f.execute()
+  assert.equal(batch.results[0].result.value.reason, 'cua_provider_changed')
+  assert.equal(f.dispatched.length, 1)
+})
+
+test('a later strict observation supersedes the earlier snapshot before form input', async () => {
+  let observations = 0
+  const f = await fixture({ strict: true, script: [
+    call('cua', { method: 'getApp', params: { selector: target.application } }),
+    call('cua', { method: 'getState', params: { appHandle: 'app-fixture', windowId: 7 } }),
+    call('cua', { method: 'getState', params: { appHandle: 'app-fixture', windowId: 7 } }),
+    call('cua', { method: 'setValue', params: { appHandle: 'app-fixture', snapshotId: 'snapshot-1', elementIndex: 2, value: 'stale' } }),
+  ], cua: async args => args.method === 'getApp' ? { appHandle: 'app-fixture' }
+    : { appHandle: 'app-fixture', windowId: 7, windowScope: 'strict-window', snapshotId: `snapshot-${++observations}` } })
+  const batch = await f.execute()
+  assert.equal(batch.results[0].result.value.status, 'blocked')
+  assert.equal(f.dispatched.length, 3)
+})
+
+test('a late Host router cannot dispatch the Terra worker to Reserve', async t => {
+  const f = await fixture()
+  if (f.ctx.agents.requestRoutingVersion !== 1) { t.skip('requires the distinct local async-route Host'); return }
+  f.ctx.on('agent/route-request', async (_event, next) => ({ ...await next(), model: 'gpt-reserve' }))
+  const batch = await f.execute()
+  assert.equal(batch.results[0].result.value.reason, 'worker_route_changed')
+  assert.equal(f.seen.length, 0)
+  assert.equal(f.dispatched.length, 0)
+  assert.deepEqual(f.parent.agent.model.current(), { provider: 'deepseek', model: 'flash' })
 })
 
 test('a window-tagged snapshot cannot authorize application-menu or other AX elements', async () => {

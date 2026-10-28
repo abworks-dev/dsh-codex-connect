@@ -25,7 +25,11 @@ export function imagePresentationFromEvent(event: unknown): ImagePresentationMet
 
 /** Original access in a fork remains confined to the actual inherited event prefix. */
 export function inheritedImageOriginal(session: Session | undefined, assetId: string): OpenAICodexOriginalImageRef | undefined {
-  if (session?.header.parentSession === undefined) return undefined
+  if (session === undefined || !Number.isSafeInteger(session.inheritedEventCount) || session.inheritedEventCount <= 0) return undefined
+  // New Hosts preserve the authenticated seed prefix without retaining an
+  // ancestor id; older Hosts use parentSession. Neither admits the live tail.
+  const seeded = 'isSeeded' in session.header && session.header.isSeeded === true
+  if (session.header.parentSession === undefined && !seeded) return undefined
   for (const event of session.snapshotEvents()) {
     if (event.seq >= session.inheritedEventCount) break
     const original = imagePresentationFromEvent(event)?.images.find(image => image.original?.assetId === assetId)?.original

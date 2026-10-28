@@ -1,11 +1,11 @@
 --- a/native/Sources/CuaNative/AXAccess.swift
 +++ b/native/Sources/CuaNative/AXAccess.swift
-@@ -6,0 +7,5 @@
-+
+@@ -7,0 +8,5 @@
 +struct AXWindowConstraint {
 +    let owner: ProcessIdentity
 +    let windowID: UInt32
 +}
++
 @@ -171 +176 @@
 -    func perform(_ element: AXUIElement, _ action: String) throws {
 +    func perform(_ element: AXUIElement, _ action: String, constraint: AXWindowConstraint? = nil) throws {
@@ -105,13 +105,25 @@
 @@ -349 +364 @@
 -            try ax().perform(selected, action)
 +            try ax().perform(selected, action, constraint: constraint(handle, params))
-@@ -368 +383 @@
+@@ -358,0 +374 @@
++            var pointerConstraint: AXWindowConstraint?
+@@ -359,0 +376 @@
++                pointerConstraint = try constraint(handle, params)
+@@ -368 +385 @@
 -                        try ax().perform(selected, action)
 +                        try ax().perform(selected, action, constraint: constraint(handle, params))
-@@ -469 +484 @@
+@@ -374,0 +392,4 @@
++                if let pointerConstraint {
++                    try ax().requireWindow(selected, expected: pointerConstraint.windowID, owner: pointerConstraint.owner)
++                    try WindowScopePolicy.requireRoute(expected: pointerConstraint.windowID, actual: window.windowID)
++                }
+@@ -382 +403 @@
+-            let route = WindowRoute(owner: identity, windowID: window.windowID, bounds: window.bounds)
++            let route = WindowRoute(owner: identity, windowID: window.windowID, bounds: window.bounds, strictWindowID: pointerConstraint?.windowID)
+@@ -469 +490 @@
 -        guard let id = plan.snapshotID, let index = plan.index, let element = try snapshot(plan.appHandle, id).elements[index] else {
 +        guard let id = plan.snapshotID, let index = plan.index else {
-@@ -472 +487,3 @@
+@@ -472 +493,3 @@
 -        try ax().perform(element, "AXRaise")
 +        let value = try snapshot(plan.appHandle, id)
 +        guard let element = value.elements[index] else { throw NativeFailure(code: "STALE_SNAPSHOT", message: "Raise target is no longer available") }
@@ -121,9 +133,9 @@
 @@ -12 +12 @@
 -        "getState": ["appHandle", "details", "includeMenus", "maxDepth", "maxElements", "windowId"],
 +        "getState": ["appHandle", "details", "includeMenus", "maxDepth", "maxElements", "strictWindowScope", "windowId"],
---- /dev/null
+--- a/native/Sources/CuaNative/WindowScopePolicy.swift
 +++ b/native/Sources/CuaNative/WindowScopePolicy.swift
-@@ -0,0 +1,13 @@
+@@ -0,0 +1,17 @@
 +// Local candidate: pure identity policy shared by AX observation and dispatch.
 +enum WindowScopeViolation: Error, Equatable {
 +    case menu
@@ -131,9 +143,39 @@
 +    case mismatch
 +}
 +struct WindowScopePolicy {
++    // Pointer fallbacks must keep the snapshot window after AX geometry reads.
++    static func requireRoute(expected: UInt32?, actual: UInt32) throws {
++        if let expected, actual != expected { throw WindowScopeViolation.mismatch }
++    }
 +    static func require(role: String, expected: UInt32, resolve: () throws -> UInt32?) throws {
 +        if role.hasPrefix("AXMenu") { throw WindowScopeViolation.menu }
 +        guard let actual = try resolve() else { throw WindowScopeViolation.unknown }
 +        guard actual == expected else { throw WindowScopeViolation.mismatch }
 +    }
 +}
+--- a/native/Sources/CuaNative/AXHover.swift
++++ b/native/Sources/CuaNative/AXHover.swift
+@@ -8,0 +9,2 @@
++        try WindowScopePolicy.requireRoute(expected: route.strictWindowID, actual: route.windowID)
++        let constraint = route.strictWindowID.map { AXWindowConstraint(owner: route.owner, windowID: $0) }
+@@ -27 +29 @@
+-            try access.perform(revealed.element, "AXShowDefaultUI")
++            try access.perform(revealed.element, "AXShowDefaultUI", constraint: constraint)
+@@ -31 +33 @@
+-            try access.perform(alternate, "AXShowAlternateUI")
++            try access.perform(alternate, "AXShowAlternateUI", constraint: constraint)
+--- a/native/Sources/CuaNative/Protocol.swift
++++ b/native/Sources/CuaNative/Protocol.swift
+@@ -125,0 +126,8 @@
++    let strictWindowID: UInt32?
++
++    init(owner: ProcessIdentity, windowID: UInt32, bounds: WindowBounds, strictWindowID: UInt32? = nil) {
++        self.owner = owner
++        self.windowID = windowID
++        self.bounds = bounds
++        self.strictWindowID = strictWindowID
++    }
+--- a/native/Sources/CuaNative/WindowPointerInput.swift
++++ b/native/Sources/CuaNative/WindowPointerInput.swift
+@@ -277,0 +278 @@
++        try WindowScopePolicy.requireRoute(expected: route.strictWindowID, actual: route.windowID)

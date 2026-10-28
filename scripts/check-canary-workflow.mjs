@@ -31,6 +31,12 @@ function assertContract(name, condition) {
 
 assertContract('image fixture selects legacy runtime by declared dependency', imageRuntimeService({ peerDependencies: { '@deepseek-ai/dsh-code-runtime': 'fixture' } }) === 'codeRuntime')
 assertContract('image fixture selects current runtime without a version-prefix assumption', imageRuntimeService({ version: '1.0.0', dependencies: { '@deepseek-ai/dsh-ptc-runtime': 'fixture' } }) === 'ptcRuntime')
+assertContract('image fixture resolves an explicit separated executor from the same Host', imageRuntimeService({ version: 'local-fixture' }, {
+  name: '@deepseek-ai/dsh-tool-executor-ptc', version: 'local-fixture', peerDependencies: { '@deepseek-ai/dsh-ptc-runtime': 'local-fixture' },
+}) === 'ptcRuntime')
+let mixedExecutorRejected = false
+try { imageRuntimeService({ version: 'local-fixture' }, { name: '@deepseek-ai/dsh-tool-executor-ptc', version: 'other', peerDependencies: { '@deepseek-ai/dsh-ptc-runtime': 'other' } }) } catch { mixedExecutorRejected = true }
+assertContract('image fixture rejects a mixed-version separated executor', mixedExecutorRejected)
 for (const dependencies of [{}, { '@deepseek-ai/dsh-code-runtime': 'fixture', '@deepseek-ai/dsh-ptc-runtime': 'fixture' }]) {
   let rejected = false
   try { imageRuntimeService({ dependencies }) } catch { rejected = true }

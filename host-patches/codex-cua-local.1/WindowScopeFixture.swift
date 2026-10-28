@@ -25,6 +25,11 @@
         try perform(role: "AXTextField", expected: 7, owner: 7)
         try perform(role: "AXButton", expected: 7, owner: 7)
         precondition(dispatches == 2)
+        try WindowScopePolicy.requireRoute(expected: 7, actual: 7)
+        try WindowScopePolicy.requireRoute(expected: nil, actual: 9)
+        do { try WindowScopePolicy.requireRoute(expected: 7, actual: 9); fatalError("pointer fallback changed window") }
+        catch WindowScopeViolation.mismatch { }
+        precondition(dispatches == 2)
         print("WindowScopeFixture: menu/foreign/unknown/reparent rejected; target form/button controls admitted")
     }
 }

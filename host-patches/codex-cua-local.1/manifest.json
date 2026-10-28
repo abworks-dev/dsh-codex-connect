@@ -80,7 +80,7 @@
     "@deepseek-ai/dsh-experimental-cua-macos": {
       "baseIntegrity": "sha512-rHYMMIYahSn1qxntUDYYsVd5jjf5Z7svdKjHgRyaJ2JoQWgNJc26Zzgr5uTQ9IL3BkOXoj7llTOBdZMR/uKH+w==",
       "patch": "patches/dsh-experimental-cua-macos.patch",
-      "patchSha256": "c77ee6f5ecb7419e26061462bbfad9a6b34cc48eb6711cfdd96eadc18ebd2428",
+      "patchSha256": "2ea8c6330460585e7a8e2f326fab6b7b6f47c2ee3f594c5bb25321d30b4c33fe",
       "files": [
         {
           "path": "native/Sources/CuaNative/AXAccess.swift",
@@ -90,7 +90,7 @@
         {
           "path": "native/Sources/CuaNative/AXWorker.swift",
           "baseSha256": "e06f40f7b365e56469618d2451ade877ed7df5c01a69d933430f2ae2b9d664f1",
-          "patchedSha256": "8cf5214e63b7a6e2a917cc77a1328a54bb2f08effd90d23c84aee5adba2721c4"
+          "patchedSha256": "129adc52e1c3c520ca9f94993d9cdec8864d758bf189ba4bf0f05483ad1a0d36"
         },
         {
           "path": "native/Sources/CuaNative/NativeProtocol.generated.swift",
@@ -100,7 +100,22 @@
         {
           "path": "native/Sources/CuaNative/WindowScopePolicy.swift",
           "baseSha256": null,
-          "patchedSha256": "1f6337f2bb5e58b88b15c918488bc094b47270a0955fad9b5c2eedf81cd6dfbb"
+          "patchedSha256": "8b0b1b73c2a5414a2954c3141689b0bb620deaa24b6e03cb7eb822e98797a9ff"
+        },
+        {
+          "path": "native/Sources/CuaNative/AXHover.swift",
+          "baseSha256": "cbf76712463bba47be2951f94d10f4a44bd9be38953ba11fafc65e701cc830b5",
+          "patchedSha256": "ca85e70edd0ed7934d47738880c525c8ec0658c0e3219a128c98b94be3503d5d"
+        },
+        {
+          "path": "native/Sources/CuaNative/Protocol.swift",
+          "baseSha256": "d762f075c359f3f46aaee356c1310baa2bf12d798ef5d0a677f664d00501bbfa",
+          "patchedSha256": "231239052e8ad6a67bc6302787e422df046e550ccbded714961a5a1bd18e9e38"
+        },
+        {
+          "path": "native/Sources/CuaNative/WindowPointerInput.swift",
+          "baseSha256": "e70a1350d01878920db45e1ef5065dddff92f59c21d015e90fe1306e7b84ba89",
+          "patchedSha256": "968406e28bb158451a73debaf8b86a33ca771818f17b853e564a49f04d4f3eb0"
         }
       ]
     }

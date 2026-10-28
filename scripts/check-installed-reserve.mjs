@@ -3,6 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { zstdDecompressSync } from 'node:zlib'
+import { ensureNativeToolExecution } from './installed-host-context.mjs'
 
 /** Exercise the packed plugin's logged Reserve transitions with an exact installed host and synthetic HTTP. */
 export async function checkInstalledReserve(importHost, CodexConnect) {
@@ -66,6 +67,7 @@ export async function checkInstalledReserve(importHost, CodexConnect) {
       return new Response(events.map(event => `data: ${JSON.stringify(event)}\n\n`).join(''), { headers: { 'content-type': 'text/event-stream' } })
     }
     for (const plugin of [Llm, Sessions, Projections, Prompt, Tools, Agents]) await ctx.plugin(plugin)
+    await ensureNativeToolExecution(ctx, importHost)
     await ctx.plugin(Loop, { agents: [] })
     let plugin = await ctx.plugin(CodexConnect, { enableReserveFallback: true })
     assert.equal((await ctx.llm.listModels('openai-codex')).some(model => model.id === 'gpt-reserve'), false)
