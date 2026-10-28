@@ -48,9 +48,10 @@ async function main() {
     for (const version of versions) {
       console.error(`Phase 2 ${process.version} / ${version}: preparing exact runtime`)
       const host = join(root, version); await mkdir(join(host, 'tests'), { recursive: true })
-      const overrides = await resolveExactDshOverrides(version, registry)
+      const resolution = await resolveExactDshOverrides(version, registry)
+      const overrides = resolution.overrides
       for (const name of PHASE2_RUNTIME_PACKAGES) assert.equal(overrides[name], version)
-      const metadata = exactDshFixtureManifest(overrides)
+      const metadata = exactDshFixtureManifest(resolution)
       // Keep peer-only roots explicit: npm's auto-peer resolver can otherwise
       // produce conflicting override sets once the authenticated UI peers enter.
       // Source fixtures must retain the plugin-owned provider version; the host adapter owns its nested dependency.
