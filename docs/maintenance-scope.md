@@ -24,6 +24,8 @@ The maintainer explicitly requested a model-independent, bounded Terra Computer 
 
 The maintainer subsequently approved two local Host changes for that instance: pre-preparation asynchronous request routing with quota recovery preserving Reserve semantics, and enforced native AX window ownership for observations/actions. This admits the isolated, distinctly versioned `codex-cua-local.1` source candidate and its validation. It does not authorize an upstream PR, third-party maintenance expansion, new credentials/system permissions, or deployment before independent review, exact-source checks and verified rollback. The stock `0.2.2-alpha.2` package is not thereby certified compatible.
 
+The maintainer then approved a narrow `codex-cua-local.2` extension for single-task delegated human consent: the true root conversation shows the native application, window, task and expiry, and the human may approve that exact child/task without permanent access. Cancellation, revocation, timeout and completion invalidate the in-memory task grant. This admits the Host/companion interface, offline fixtures and reviewed reversible deployment; it does not itself grant application or OS access. The existing root-interaction guard and stored permissions remain intact. Actual consent still requires a human choice for a concrete target; no general permission platform or automatic approval is admitted.
+
 | Surface | Disposition | Retained obligations |
 | --- | --- | --- |
 | Authorization, manual models, installation, compatibility, Canary, diagnostics | Maintain | Scoped defect fixes and supported-version evidence; no automatic expansion of support |

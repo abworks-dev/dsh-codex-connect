@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "id": "codex-cua-local.1",
+  "id": "codex-cua-local.2",
   "baseVersion": "0.2.2-alpha.2",
-  "candidateVersion": "0.2.2-alpha.2.codex-cua-local.1",
+  "candidateVersion": "0.2.2-alpha.2.codex-cua-local.2",
   "published": false,
   "nativeArchitecture": "arm64",
   "packages": {
@@ -48,12 +48,12 @@
     "@deepseek-ai/dsh-cua": {
       "baseIntegrity": "sha512-yceImk1O0NkKTdwe8IQYX9SPmsulcJD7LtmPm7oJXunY2+4HQkJNA3qOSk5zJyr1NpWffnRdUcJvTIDgIMGOSA==",
       "patch": "patches/dsh-cua.patch",
-      "patchSha256": "d5c002b35081ea5c9236332b1803ae3569ff099b8ca5e7e85c835bd33f916c01",
+      "patchSha256": "16e5ac7e34689a1d0c451a322b4a2b8c36064742d3b9a65dbd90dfe98ac7fa90",
       "files": [
         {
           "path": "lib/index.js",
           "baseSha256": "e62f507fa5471f2797eb9d4f0d22f10f5edb3d49d05f2be2ea7ae6024485b2b2",
-          "patchedSha256": "0a73f0cc29508029b02f22c95fc300b7c4cf5115055f4998a77e28e3b86690d7"
+          "patchedSha256": "e52441c1bcf4b22e24c8b275ee4d1b758377d96f8988b01b203f9253a07eb7e9"
         },
         {
           "path": "lib/protocol.js",
@@ -63,7 +63,7 @@
         {
           "path": "lib/types/index.d.ts",
           "baseSha256": "3ca4d834dde9fb52133df32ab33abe0413f7cebb6793d74c7c59c6aa95f7ac8e",
-          "patchedSha256": "da721f34e8a71d0f1b28cfd4e22e83429d85f207100464f5a1514fb30f057a64"
+          "patchedSha256": "0d0ce3864adc0d7334686e18ce18a2c15a643e54a7fbaa3d391b5299c601c587"
         },
         {
           "path": "lib/types/protocol.d.ts",

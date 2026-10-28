@@ -18,6 +18,7 @@ import Prompt from '@deepseek-ai/dsh-system-prompt'
 import Tools from '@deepseek-ai/dsh-tools'
 import { NativeToolExecutor } from '@deepseek-ai/dsh-tool-executor-native'
 import ComputerUse from '@deepseek-ai/dsh-computer-use'
+import UserQuestions from '@deepseek-ai/dsh-user-questions'
 import { CuaConfig, installCua } from '@deepseek-ai/dsh-cua'
 import { computerUseTool, operationDenial, PRESET, TOOL, ROUTE } from '../worker.mjs'
 import { acquireDesktopLease } from '../lease.mjs'
@@ -34,18 +35,27 @@ function *toolStream(block) {
   yield { type: 'finish', reason: { kind: 'tool-call' } }
 }
 
-async function fixture({ script, cua, officialCua = false, strict = false, config = {} } = {}) {
+async function fixture({ script, cua, officialCua = false, strict = false, taskApproval = true, humanAnswer, nativeResponse, config = {} } = {}) {
   const directory = await mkdtemp(join(tmpdir(), 'codex-cua-host-'))
   owned.push(() => rm(directory, { recursive: true, force: true }))
   const ctx = new Context()
   owned.push(() => ctx.fiber.dispose())
-  const scopeFiber = strict ? await ctx.plugin({ apply(scopeCtx) {
+  const scopeFiber = strict && !officialCua ? await ctx.plugin({ apply(scopeCtx) {
     scopeCtx.provide('cuaWindowScope', Object.freeze({ version: 1, strictWindowScope: true }))
   } }) : undefined
   ctx.baseUrl = new URL(`file://${directory}/`).href
   await ctx.plugin(Loader)
   ctx.loader.builtins.include = Include
   for (const service of [Llm, Sessions, Projection, AgentRegistry, Prompt, Tools]) await ctx.plugin(service)
+  const questions = [], grants = [], nativeRequests = []
+  if (!officialCua && taskApproval) ctx.provide('cuaTaskApproval', Object.freeze({ version: 1, begin(input) {
+    assert.equal(ctx.agents.get(input.parent.id), input.parent)
+    assert.equal(ctx.agents.get(input.child.id), input.child)
+    assert.equal(ctx.agents.isOwnedBy(input.child.id, input.parent), true)
+    const controller = new AbortController(), grant = { ...input, disposed: false }
+    grants.push(grant)
+    return { id: `synthetic-${grants.length}`, signal: controller.signal, async dispose() { grant.disposed = true }, async revoke() { controller.abort() } }
+  } }))
   await ctx.plugin(Presets, { default: PRESET })
   await ctx.agentPresets.register({ id: PRESET, plugins: [] })
   await ctx.plugin(AgentLoop, { agents: [] })
@@ -88,18 +98,22 @@ async function fixture({ script, cua, officialCua = false, strict = false, confi
   ctx.tools.register({ name: 'host_shell', description: 'Forbidden capability', parameters: schema, output, async execute() { throw new Error('shell reached') } })
   // Match the official CUA provider's scoped registration lifecycle without launching its helper.
   if (officialCua) {
+    await ctx.plugin(UserQuestions)
+    ctx.on('user-questions/request', async (request, next) => { questions.push(request); return humanAnswer ? humanAnswer(request) : next() })
     await ctx.plugin(ComputerUse)
     await ctx.plugin({ inject: ['computerUse', 'agents', 'tools', 'systemPrompt'], apply(cuaCtx) {
-      installCua(cuaCtx, CuaConfig({ agentPreset: PRESET }), { helperPath: '/synthetic/no-executable', guidance: 'Synthetic channel', description: 'Fixture official CUA provider',
+      installCua(cuaCtx, CuaConfig({ agentPreset: PRESET, strictWindowScope: strict }), { helperPath: '/synthetic/no-executable', guidance: 'Synthetic channel', description: 'Fixture official CUA provider',
       createChannel() {
         const stdout = new PassThrough()
         let done
         const closed = new Promise(resolve => { done = resolve })
         const stdin = new Writable({ write(chunk, _encoding, callback) {
           const request = JSON.parse(chunk.toString())
-          assert.equal(request.method, 'getApp')
-          stdout.write(JSON.stringify({ id: request.id, result: { appHandle: 'app-fixture', pid: 1234, name: target.application,
-            authorization: { id: 'a'.repeat(64), name: target.application, persistable: false } } }) + '\n')
+          nativeRequests.push(request)
+          Promise.resolve(nativeResponse ? nativeResponse(request) : request.method === 'getApp' ? { appHandle: 'app-fixture', pid: 1234, name: target.application,
+            authorization: { id: 'a'.repeat(64), name: target.application, persistable: false } } : request.method === 'getState' ? {
+              appHandle: 'app-fixture', pid: 1234, windowId: 7, snapshotId: 'strict-fixture', windowScope: 'strict-window', tree: 'Synthetic button', windows: [{ windowId: 7, pid: 1234, appName: target.application, title: 'Synthetic window', bounds: { x: 0, y: 0, width: 100, height: 100 }, isOnScreen: true, onCurrentSpace: true }], truncated: false,
+            } : { acted: true }).then(result => { if (!stdout.writableEnded) stdout.write(JSON.stringify({ id: request.id, result }) + '\n') }, error => stdout.destroy(error))
           callback()
         } })
         return { stdin, stdout, done: closed, close() { stdout.end(); stdin.end(); done() }, waitForClose: () => closed }
@@ -125,7 +139,7 @@ async function fixture({ script, cua, officialCua = false, strict = false, confi
   ctx.tools.register(tool)
   const controller = new AbortController()
   const execute = () => ctx.tools.execute({ agent: parent.agent, calls: [call(TOOL, { goal: 'Complete the synthetic UI task' })], signal: controller.signal })
-  return { ctx, parent, seen, dispatched, execute, controller, directory, scopeFiber }
+  return { ctx, parent, seen, dispatched, execute, controller, directory, scopeFiber, questions, grants, nativeRequests }
 }
 
 test('independent Terra child uses the real Native pipeline and leaves the Flash parent route unchanged', async () => {
@@ -349,7 +363,208 @@ test('official published CUA returns blocked when no delegated consent answerer 
   const f = await fixture({ officialCua: true })
   const batch = await f.execute()
   assert.equal(batch.results[0].result.value.status, 'blocked')
-  assert.equal(batch.results[0].result.value.reason, 'application_authorization_required')
+  assert.equal(batch.results[0].result.value.reason, 'host_task_approval_unavailable')
+})
+
+test('absence of the task approval capability blocks before any child model or desktop call', async () => {
+  const f = await fixture({ taskApproval: false })
+  const value = (await f.execute()).results[0].result.value
+  assert.equal(value.reason, 'host_task_approval_unavailable')
+  assert.equal(f.seen.length, 0)
+  assert.equal(f.dispatched.length, 0)
+})
+
+const taskScript = () => [
+  call('cua', { method: 'getApp', params: { selector: target.application } }),
+  call('cua', { method: 'getState', params: { appHandle: 'app-fixture', windowId: 7, includeMenus: false } }),
+  call('cua', { method: 'setValue', params: { appHandle: 'app-fixture', snapshotId: 'strict-fixture', elementIndex: 2, value: 'Synthetic value' } }),
+  call('cua', { method: 'getState', params: { appHandle: 'app-fixture', windowId: 7, includeMenus: false } }),
+  call('finish_computer_use', { status: 'completed', summary: 'Synthetic state observed' }),
+]
+const allowTask = () => ({ answers: [{ id: 'cua-task-access', selected: ['Allow this task'] }] })
+
+async function directTaskFixture(t, options = {}) {
+  const f = await fixture({ officialCua: true, strict: true, humanAnswer: allowTask, ...options })
+  const capability = f.ctx.get('cuaTaskApproval')
+  if (!capability) { t.skip('requires local.2 task capability'); return }
+  const child = await f.ctx.agents.create({ sessionId: SessionId(crypto.randomUUID()), parentAgent: f.parent.agent,
+    meta: { origin: 'subagent', parentSession: f.parent.agent.id, agentPreset: PRESET },
+    agentOptions: ROUTE, async setup(childCtx) { await f.ctx.agentPresets.mount(childCtx, PRESET) },
+  })
+  const controller = new AbortController()
+  const input = { parent: f.parent.agent, child: child.agent, application: target.application, windowId: 7, goal: 'Direct synthetic task', expiresAt: Date.now() + 1500, signal: controller.signal }
+  const grant = capability.begin(input)
+  owned.push(async () => { await grant.dispose(); await child.dispose() })
+  const invoke = async args => (await f.ctx.tools.execute({ agent: child.agent, calls: [call('cua', args)], signal: controller.signal })).results[0].result
+  return { ...f, capability, child, controller, input, grant, invoke }
+}
+
+test('task registration rejects forged root, foreign child, extra fields and invalid lifetimes', async t => {
+  const f = await directTaskFixture(t)
+  if (!f) return
+  const foreign = await f.ctx.agents.create({ sessionId: SessionId(crypto.randomUUID()), agentOptions: ROUTE })
+  owned.push(() => foreign.dispose())
+  for (const input of [
+    { ...f.input, parent: { ...f.parent.agent } }, { ...f.input, child: foreign.agent },
+    { ...f.input, expiresAt: Date.now() - 1 }, { ...f.input, expiresAt: Date.now() + 1800000 },
+    { ...f.input, approved: true },
+  ]) assert.throws(() => f.capability.begin(input), /task|Task|root/)
+  assert.equal(f.nativeRequests.length, 0)
+  assert.equal(f.questions.length, 0)
+})
+
+test('Host task scope rejects foreign windows, handles, snapshots and app-wide methods before dispatch', async t => {
+  const f = await directTaskFixture(t)
+  if (!f) return
+  assert.equal((await f.invoke({ method: 'getApp', params: { selector: target.application } })).isError, false)
+  assert.equal((await f.invoke({ method: 'getState', params: { appHandle: 'app-fixture', windowId: 7 } })).isError, false)
+  const before = f.nativeRequests.length
+  for (const args of [
+    { method: 'getState', params: { appHandle: 'app-fixture', windowId: 8 } },
+    { method: 'getState', params: { appHandle: 'app-fixture', windowId: 7, includeMenus: true } },
+    { method: 'getState', params: { appHandle: 'foreign', windowId: 7 } },
+    { method: 'setValue', params: { appHandle: 'app-fixture', snapshotId: 'foreign', elementIndex: 2, value: 'forbidden' } },
+    { method: 'click', params: { appHandle: 'app-fixture', snapshotId: 'strict-fixture', elementIndex: 2, mouseButton: 'right' } },
+    { method: 'typeText', params: { appHandle: 'app-fixture', text: 'forbidden' } },
+  ]) assert.equal((await f.invoke(args)).isError, true)
+  assert.equal(f.nativeRequests.length, before)
+  assert.equal(f.questions.length, 1)
+})
+
+test('task closure leaves a tombstone so a live child cannot fall back to saved app consent', async t => {
+  const f = await directTaskFixture(t)
+  if (!f) return
+  await f.invoke({ method: 'getApp', params: { selector: target.application } })
+  await f.grant.dispose()
+  assert.equal(f.grant.signal.aborted, true)
+  const before = f.nativeRequests.length
+  const result = await f.invoke({ method: 'getApp', params: { selector: target.application } })
+  assert.equal(result.isError, true)
+  assert.equal(f.nativeRequests.length, before)
+  assert.throws(() => f.capability.begin(f.input), /already/)
+})
+
+test('revocation cancels in-flight native work and rejects later dispatch', async t => {
+  let entered
+  const pending = new Promise(resolve => { entered = resolve })
+  const f = await directTaskFixture(t, { nativeResponse: request => {
+    if (request.method === 'getApp') return { appHandle: 'app-fixture', pid: 1234, name: target.application, authorization: { id: 'a'.repeat(64), name: target.application, persistable: false } }
+    if (request.method === 'getState') { entered(); return new Promise(() => {}) }
+    return { acted: true }
+  } })
+  if (!f) return
+  await f.invoke({ method: 'getApp', params: { selector: target.application } })
+  const inFlight = f.invoke({ method: 'getState', params: { appHandle: 'app-fixture', windowId: 7 } })
+  await pending
+  await f.grant.revoke()
+  assert.equal((await inFlight).isError, true)
+  const before = f.nativeRequests.length
+  assert.equal((await f.invoke({ method: 'getState', params: { appHandle: 'app-fixture', windowId: 7 } })).isError, true)
+  assert.equal(f.nativeRequests.length, before)
+})
+
+test('expiry while the root question is pending admits no observation or input', async t => {
+  const f = await directTaskFixture(t, { humanAnswer: request => new Promise((resolve, reject) => {
+    request.signal.addEventListener('abort', () => reject(new Error('synthetic pending answer cancelled')), { once: true })
+  }) })
+  if (!f) return
+  const result = await f.invoke({ method: 'getApp', params: { selector: target.application } })
+  assert.equal(result.isError, true)
+  assert.equal(f.grant.signal.aborted, true)
+  assert.deepEqual(f.nativeRequests.map(x => x.method), ['getApp'])
+})
+
+test('existing application revoke also revokes the task and requires fresh user input', async t => {
+  const f = await directTaskFixture(t)
+  if (!f) return
+  await f.invoke({ method: 'getApp', params: { selector: target.application } })
+  await f.ctx.get('cuaAccess').revoke('a'.repeat(64))
+  assert.equal(f.grant.signal.aborted, true)
+  assert.throws(() => f.capability.begin(f.input), /new user input/)
+  const count = f.nativeRequests.length
+  assert.equal((await f.invoke({ method: 'getState', params: { appHandle: 'app-fixture', windowId: 7 } })).isError, true)
+  assert.equal(f.nativeRequests.length, count)
+})
+
+test('root Stop while the task question is pending cancels and drains without input', async t => {
+  let asked
+  const pending = new Promise(resolve => { asked = resolve })
+  const f = await fixture({ officialCua: true, strict: true, script: taskScript(), humanAnswer: request => {
+    asked()
+    return new Promise((resolve, reject) => request.signal.addEventListener('abort', () => reject(new Error('synthetic human wait cancelled')), { once: true }))
+  } })
+  if (!f.ctx.get('cuaTaskApproval')) { t.skip('requires local.2 task capability'); return }
+  const run = f.execute()
+  await pending
+  f.controller.abort()
+  const value = (await run).results[0].result.value
+  assert.equal(value.status, 'cancelled')
+  assert.equal(value.cleanup, 'drained')
+  assert.deepEqual(f.nativeRequests.map(x => x.method), ['getApp'])
+})
+
+test('a late human answer after revocation cannot reopen a task', async t => {
+  let asked, answer
+  const pending = new Promise(resolve => { asked = resolve })
+  const f = await directTaskFixture(t, { humanAnswer: () => { asked(); return new Promise(resolve => { answer = resolve }) } })
+  if (!f) return
+  const run = f.invoke({ method: 'getApp', params: { selector: target.application } })
+  await pending
+  const revoke = f.grant.revoke()
+  answer(allowTask())
+  assert.equal((await run).isError, true)
+  await revoke
+  assert.deepEqual(f.nativeRequests.map(x => x.method), ['getApp'])
+})
+
+test('a denied root task cannot automatically create another worker for the same user input', async t => {
+  const f = await fixture({ officialCua: true, strict: true, script: taskScript(), humanAnswer: () => ({ answers: [{ id: 'cua-task-access', selected: ['Deny'] }] }) })
+  if (!f.ctx.get('cuaTaskApproval')) { t.skip('requires local.2 task capability'); return }
+  await f.execute()
+  const count = f.seen.length
+  const result = (await f.execute()).results[0].result.value
+  assert.equal(result.reason, 'task_retry_requires_new_user_input')
+  assert.equal(f.seen.length, count)
+  assert.equal(f.questions.length, 1)
+})
+
+test('official task approval asks the true root for one child/window with no permanent option', async t => {
+  let f
+  f = await fixture({ officialCua: true, strict: true, script: taskScript(), humanAnswer: request => {
+    assert.equal(request.agent, f.parent.agent)
+    assert.equal(f.nativeRequests.length, 1, 'only application identity lookup may precede approval')
+    const q = request.questions[0]
+    assert.equal(q.id, 'cua-task-access')
+    assert.deepEqual(q.options.map(x => x.label), ['Allow this task', 'Deny'])
+    assert.equal(q.intent.always, undefined)
+    for (const text of ['Process: 1234', 'Window: 7', 'Complete the synthetic UI task', 'Expires:', 'Stop']) assert.ok(q.detail.includes(text))
+    return allowTask()
+  } })
+  if (!f.ctx.get('cuaTaskApproval')) { t.skip('requires local.2 task capability'); return }
+  f.ctx.get('cuaAccess').policy.options.store.withState = () => { throw new Error('task consent must not read/write saved application grants') }
+  const result = (await f.execute()).results[0].result.value
+  assert.equal(result.status, 'completed', JSON.stringify(result))
+  assert.equal(result.cleanup, 'drained')
+  assert.equal(f.questions.length, 1)
+  assert.deepEqual(f.nativeRequests.map(x => x.method), ['getApp', 'getState', 'setValue', 'getState'])
+  assert.deepEqual(f.parent.agent.model.current(), { provider: 'deepseek', model: 'flash' })
+})
+
+test('denied and malformed task answers never dispatch observation or input', async t => {
+  for (const answer of [
+    { answers: [{ id: 'cua-task-access', selected: ['Deny'] }] },
+    { answers: [{ id: 'cua-task-access', selected: ['Always allow'] }] },
+    { answers: [{ id: 'cua-task-access', selected: ['Allow this task'], custom: 'override' }] },
+    { answers: [{ id: 'other', selected: ['Allow this task'] }] },
+  ]) {
+    const f = await fixture({ officialCua: true, strict: true, script: taskScript(), humanAnswer: () => answer })
+    if (!f.ctx.get('cuaTaskApproval')) { t.skip('requires local.2 task capability'); return }
+    const value = (await f.execute()).results[0].result.value
+    assert.equal(value.status, 'blocked')
+    assert.equal(value.cleanup, 'drained')
+    assert.deepEqual(f.nativeRequests.map(x => x.method), ['getApp'])
+    assert.equal(f.questions.length, 1)
+  }
 })
 
 test('a Host-reported in-flight revocation stops later actions', { timeout: 3000 }, async () => {

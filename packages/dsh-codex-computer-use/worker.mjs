@@ -55,7 +55,7 @@ export function computerUseTool(ctx, config, acquireLease = acquireDesktopLease)
   }, 'codex-computer-use.drain')
   return {
     name: TOOL,
-    description: 'Experimental independent GPT-6.1 Terra worker for the user-authorized goal in one operator-configured application/window. Screenshots, click and scroll; AX observation, element click and form values require the locally patched Host strict-window contract. Synchronous and bounded; preserves this conversation model. Cannot acquire application consent for delegated sessions. A completed result is the worker report, not independent task acceptance. Does not authorize other applications, files, accounts, or background work.',
+    description: 'Experimental independent GPT-6.1 Terra worker for the user-authorized goal in one operator-configured application/window. Screenshots, click and scroll; AX observation, element click and form values require the locally patched Host strict-window contract. The Host asks the true root conversation for human consent for this task only; the model cannot approve. Synchronous and bounded; preserves this conversation model. A completed result is the worker report, not independent task acceptance. Does not authorize other applications, files, accounts, or background work.',
     parameters: { type: 'object', additionalProperties: false, properties: { goal: { type: 'string', minLength: 1, maxLength: 8000 } }, required: ['goal'] },
     output: { schema: { type: 'object' }, render },
     isConcurrencySafe: () => false,
@@ -65,6 +65,8 @@ export function computerUseTool(ctx, config, acquireLease = acquireDesktopLease)
       if (unloading || !parent || ctx.agents.get(parent.id) !== parent) return { status: 'blocked', reason: 'live_parent_required' }
       if (ctx.agentPresets.composedPreset(parent.ctx) === PRESET) return { status: 'blocked', reason: 'recursive_worker_denied' }
       if (!config.application || !Number.isSafeInteger(config.windowId) || config.windowId <= 0) return { status: 'blocked', reason: 'operator_target_required' }
+      const taskApproval = ctx.get('cuaTaskApproval')
+      if (taskApproval?.version !== 1 || typeof taskApproval.begin !== 'function') return { status: 'blocked', reason: 'host_task_approval_unavailable' }
       let lease
       try { lease = await acquireLease() } catch { return { status: 'blocked', reason: 'desktop_lease_unavailable' } }
       const abort = new AbortController()
@@ -75,13 +77,14 @@ export function computerUseTool(ctx, config, acquireLease = acquireDesktopLease)
       const state = { handle: undefined, appHandle: undefined, snapshotId: undefined, result: undefined, proposal: undefined, blocked: undefined, requests: 0, operations: 0, effective: undefined, observed: false }
       const leaseMonitor = setInterval(() => { if (!lease.valid()) { state.blocked = 'desktop_lease_lost'; abort.abort('lease_lost') } }, 50)
       const started = Date.now()
+      let taskGrant, taskRevoked
       let quiescent = false
       const run = (async () => {
         const check = () => {
           signal.throwIfAborted()
           if (unloading || !lease.valid()) { state.blocked = 'desktop_lease_lost'; abort.abort('lease_lost'); throw new Error('CUA_LEASE_LOST') }
           if (ctx.agents.get(parent.id) !== parent) { state.blocked = 'parent_disposed'; abort.abort('parent_disposed'); throw new Error('CUA_PARENT_DISPOSED') }
-          if (ctx.get('cuaWindowScope') !== windowScope) { state.blocked = 'cua_provider_changed'; abort.abort('provider_changed'); throw new Error('CUA_PROVIDER_CHANGED') }
+          if (ctx.get('cuaWindowScope') !== windowScope || ctx.get('cuaTaskApproval') !== taskApproval) { state.blocked = 'cua_provider_changed'; abort.abort('provider_changed'); throw new Error('CUA_PROVIDER_CHANGED') }
         }
         try {
           check()
@@ -113,7 +116,8 @@ export function computerUseTool(ctx, config, acquireLease = acquireDesktopLease)
                 if (exec.name !== 'cua') return
                 if (result.isError) {
                   const detail = JSON.stringify(result.error)
-                  if (/APP_ACCESS_REVOKED/u.test(detail)) state.blocked = 'application_access_revoked'
+                  if (/CUA_TASK_/u.test(detail)) state.blocked = 'task_authorization_denied'
+                  else if (/APP_ACCESS_REVOKED/u.test(detail)) state.blocked = 'application_access_revoked'
                   else if (/APP_APPROVAL_UNAVAILABLE|APP_ACCESS_REQUIRED|APP_ACCESS_DENIED|PERMISSION_DENIED|permission|Permission|authorization|Accessibility|Screen Recording/u.test(detail)) state.blocked = 'application_authorization_required'
                 } else if (exec.arguments.method === 'getApp') {
                   if (typeof result.value?.appHandle === 'string') { state.appHandle = result.value.appHandle; state.snapshotId = undefined }
@@ -178,6 +182,10 @@ export function computerUseTool(ctx, config, acquireLease = acquireDesktopLease)
           })
           const child = state.handle.agent
           if (!ctx.agents.isOwnedBy(child.id, parent) || !child.ctx.tools.get('cua', child)) { state.blocked = 'scoped_cua_unavailable'; return }
+          taskGrant = taskApproval.begin({ parent, child, application: config.application, windowId: config.windowId, goal, expiresAt: started + config.maxDurationMs, signal })
+          taskRevoked = () => { state.blocked ??= Date.now() >= started + config.maxDurationMs ? 'task_authorization_expired' : 'task_authorization_revoked'; abort.abort('task_permission_closed') }
+          taskGrant.signal.addEventListener('abort', taskRevoked, { once: true })
+          if (taskGrant.signal.aborted) taskRevoked()
           const cancel = () => child.cancel({ kind: 'parent' })
           signal.addEventListener('abort', cancel, { once: true })
           try {
@@ -186,11 +194,14 @@ export function computerUseTool(ctx, config, acquireLease = acquireDesktopLease)
             await child.whenIdle()
             state.effective = child.session.requestHeader()?.config
           } finally { signal.removeEventListener('abort', cancel) }
-        } catch {
+        } catch (error) {
           // Host error bodies can contain private state. Return finite reasons only.
-          if (!signal.aborted && !state.blocked) state.blocked = 'host_execution_failed'
+          if (!signal.aborted && !state.blocked) state.blocked = error?.code === 'CUA_TASK_RETRY_REQUIRES_USER_INPUT' ? 'task_retry_requires_new_user_input' : 'host_execution_failed'
         } finally {
-          try { await state.handle?.dispose(); quiescent = true } catch { state.blocked = 'cleanup_uncertain' }
+          if (taskGrant && taskRevoked) taskGrant.signal.removeEventListener('abort', taskRevoked)
+          const cleanup = await Promise.allSettled([Promise.resolve().then(() => taskGrant?.dispose()), Promise.resolve().then(() => state.handle?.dispose())])
+          quiescent = cleanup.every(result => result.status === 'fulfilled')
+          if (!quiescent) state.blocked = 'cleanup_uncertain'
         }
       })()
       active.set(run, { abort })
@@ -199,7 +210,7 @@ export function computerUseTool(ctx, config, acquireLease = acquireDesktopLease)
         const status = execution.signal.aborted ? 'cancelled' : state.blocked ? 'blocked' : abort.signal.aborted ? 'failed' : state.result?.status ?? 'failed'
         return { status, reason: state.blocked ?? (abort.signal.aborted ? 'deadline_or_lifecycle_cancelled' : state.result ? 'worker_reported' : 'worker_did_not_finish'),
           ...(state.result && !state.blocked && !signal.aborted ? { summary: state.result.summary } : {}),
-          workerSessionId: state.handle?.agent.id ?? null, requestedModel: ROUTE, effectiveModel: state.effective ?? null,
+          workerSessionId: state.handle?.agent.id ?? null, taskId: taskGrant?.id ?? null, requestedModel: ROUTE, effectiveModel: state.effective ?? null,
           effectiveModelSource: state.effective ? 'host_request_header' : 'unknown', backendEffectiveModel: null,
           modelSteps: state.requests, cuaCalls: state.operations, elapsedMs: Date.now() - started, cleanup: quiescent ? 'drained' : 'uncertain', acceptance: 'not_independently_verified' }
       } finally { clearTimeout(deadline); clearInterval(leaseMonitor); active.delete(run); lease.release(quiescent) }
