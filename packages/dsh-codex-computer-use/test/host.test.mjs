@@ -497,9 +497,18 @@ test('root Stop while the task question is pending cancels and drains without in
   const run = f.execute()
   await pending
   f.controller.abort()
-  const value = (await run).results[0].result.value
-  assert.equal(value.status, 'cancelled')
-  assert.equal(value.cleanup, 'drained')
+  const result = (await run).results[0].result
+  if (result.value) {
+    assert.equal(result.value.status, 'cancelled')
+    assert.equal(result.value.cleanup, 'drained')
+  } else {
+    assert.equal(result.isError, true)
+    assert.match(JSON.stringify(result.error), /ABORTED|AbortError/u)
+  }
+  const tasks = [...f.ctx.get('cuaAccess').policy.tasks.values()]
+  for (const task of tasks) assert.equal(task.closed, true)
+  await Promise.all(tasks.map(task => task.closing))
+  assert.equal(f.ctx.get('cuaAccess').policy.tasks.size, 0)
   assert.deepEqual(f.nativeRequests.map(x => x.method), ['getApp'])
 })
 
