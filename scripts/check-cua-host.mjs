@@ -20,9 +20,22 @@ async function command(binary, args) {
 }
 try {
   if (!supplied) {
-    const overrides = await resolveExactDshOverrides(version, readDshRegistryManifest)
-    await writeFile(join(fixture, 'package.json'), JSON.stringify(exactDshFixtureManifest(overrides)))
-    await command('pnpm', ['--ignore-workspace', '--config.minimum-release-age=0', 'install', '--ignore-scripts'])
+    let hostManifest
+    const overrides = await resolveExactDshOverrides(version, async (name, requested) => {
+      const manifest = await readDshRegistryManifest(name, requested)
+      if (name === '@deepseek-ai/dsh') hostManifest = manifest
+      return manifest
+    })
+    const manifest = exactDshFixtureManifest(overrides)
+    // The copied test package imports these directly. A strict pnpm layout
+    // does not expose dependencies belonging only to the CLI's virtual store.
+    for (const name of ['@deepseek-ai/cordis', '@deepseek-ai/schemastery', '@deepseek-ai/cordis-plugin-loader', '@deepseek-ai/cordis-plugin-include']) {
+      const exact = hostManifest.dependencies[name]?.replace(/^~/u, '')
+      if (typeof exact !== 'string' || !/^\d+\.\d+\.\d+(?:-[a-z0-9.-]+)?$/u.test(exact)) throw new Error(`Host fixture dependency is not an exact published version: ${name}`)
+      manifest.dependencies[name] = exact
+    }
+    await writeFile(join(fixture, 'package.json'), JSON.stringify(manifest))
+    await command('pnpm', ['--ignore-workspace', '--config.minimum-release-age=0', 'install', '--ignore-scripts', '--store-dir', join(fixture, 'store')])
   }
   const require = createRequire(join(fixture, 'package.json'))
   for (const name of ['dsh', 'dsh-agent', 'dsh-tools', 'dsh-agent-preset-registry', 'dsh-cua', 'dsh-tool-executor-native', 'dsh-experimental-cua-macos']) {
