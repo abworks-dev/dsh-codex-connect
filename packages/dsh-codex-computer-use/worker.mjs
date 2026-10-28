@@ -44,7 +44,7 @@ function inputGoal(args) {
   return args.goal.trim()
 }
 
-/** Install only after the caller has mounted the dedicated preset and an official CUA provider. */
+/** Register the bounded tool; invocation requires the live official provider. */
 export function computerUseTool(ctx, config, acquireLease = acquireDesktopLease) {
   const active = new Map()
   let unloading = false
@@ -65,6 +65,8 @@ export function computerUseTool(ctx, config, acquireLease = acquireDesktopLease)
       if (unloading || !parent || ctx.agents.get(parent.id) !== parent) return { status: 'blocked', reason: 'live_parent_required' }
       if (ctx.agentPresets.composedPreset(parent.ctx) === PRESET) return { status: 'blocked', reason: 'recursive_worker_denied' }
       if (!config.application || !Number.isSafeInteger(config.windowId) || config.windowId <= 0) return { status: 'blocked', reason: 'operator_target_required' }
+      const computerUse = ctx.get('computerUse')
+      if (computerUse?.providerName !== 'dsh-cua') return { status: 'blocked', reason: 'official_provider_unavailable' }
       const taskApproval = ctx.get('cuaTaskApproval')
       if (taskApproval?.version !== 1 || typeof taskApproval.begin !== 'function') return { status: 'blocked', reason: 'host_task_approval_unavailable' }
       let lease
@@ -84,7 +86,7 @@ export function computerUseTool(ctx, config, acquireLease = acquireDesktopLease)
           signal.throwIfAborted()
           if (unloading || !lease.valid()) { state.blocked = 'desktop_lease_lost'; abort.abort('lease_lost'); throw new Error('CUA_LEASE_LOST') }
           if (ctx.agents.get(parent.id) !== parent) { state.blocked = 'parent_disposed'; abort.abort('parent_disposed'); throw new Error('CUA_PARENT_DISPOSED') }
-          if (ctx.get('cuaWindowScope') !== windowScope || ctx.get('cuaTaskApproval') !== taskApproval) { state.blocked = 'cua_provider_changed'; abort.abort('provider_changed'); throw new Error('CUA_PROVIDER_CHANGED') }
+          if (ctx.get('computerUse')?.providerName !== 'dsh-cua' || ctx.get('cuaWindowScope') !== windowScope || ctx.get('cuaTaskApproval') !== taskApproval) { state.blocked = 'cua_provider_changed'; abort.abort('provider_changed'); throw new Error('CUA_PROVIDER_CHANGED') }
         }
         try {
           check()

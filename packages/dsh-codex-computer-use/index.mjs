@@ -25,8 +25,8 @@ export async function apply(ctx, config) {
   }
   const releasePreset = await ctx.agentPresets.register({ id: PRESET, name: 'Bounded Terra Computer Use', plugins: [] })
   ctx.effect(() => releasePreset, 'codex-computer-use.preset')
-  // DSH owns the sole CUA provider. Its existing `cua` entry must target PRESET;
-  // never create a second provider or change its grants here.
-  if (ctx.computerUse.providerName !== 'dsh-cua') throw new Error('The official DSH CUA provider must be loaded')
+  // Loader effects may register the sole official provider after this entry.
+  // The worker checks its live identity before acquiring a lease or child and
+  // throughout execution; this companion never creates a provider or grant.
   ctx.tools.register(computerUseTool(ctx, config))
 }

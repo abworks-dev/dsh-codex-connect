@@ -35,7 +35,7 @@ function *toolStream(block) {
   yield { type: 'finish', reason: { kind: 'tool-call' } }
 }
 
-async function fixture({ script, cua, officialCua = false, strict = false, taskApproval = true, humanAnswer, nativeResponse, config = {} } = {}) {
+async function fixture({ script, cua, officialCua = false, strict = false, taskApproval = true, providerName = 'dsh-cua', humanAnswer, nativeResponse, config = {} } = {}) {
   const directory = await mkdtemp(join(tmpdir(), 'codex-cua-host-'))
   owned.push(() => rm(directory, { recursive: true, force: true }))
   const ctx = new Context()
@@ -46,7 +46,10 @@ async function fixture({ script, cua, officialCua = false, strict = false, taskA
   ctx.baseUrl = new URL(`file://${directory}/`).href
   await ctx.plugin(Loader)
   ctx.loader.builtins.include = Include
-  for (const service of [Llm, Sessions, Projection, AgentRegistry, Prompt, Tools]) await ctx.plugin(service)
+  for (const service of [Llm, Sessions, Projection, AgentRegistry, Prompt, Tools, ComputerUse]) await ctx.plugin(service)
+  const providerFiber = !officialCua && providerName ? await ctx.plugin({ inject: ['computerUse'], apply(providerCtx) {
+    providerCtx.computerUse.register(providerName)
+  } }) : undefined
   const questions = [], grants = [], nativeRequests = []
   if (!officialCua && taskApproval) ctx.provide('cuaTaskApproval', Object.freeze({ version: 1, begin(input) {
     assert.equal(ctx.agents.get(input.parent.id), input.parent)
@@ -100,7 +103,6 @@ async function fixture({ script, cua, officialCua = false, strict = false, taskA
   if (officialCua) {
     await ctx.plugin(UserQuestions)
     ctx.on('user-questions/request', async (request, next) => { questions.push(request); return humanAnswer ? humanAnswer(request) : next() })
-    await ctx.plugin(ComputerUse)
     await ctx.plugin({ inject: ['computerUse', 'agents', 'tools', 'systemPrompt'], apply(cuaCtx) {
       installCua(cuaCtx, CuaConfig({ agentPreset: PRESET, strictWindowScope: strict }), { helperPath: '/synthetic/no-executable', guidance: 'Synthetic channel', description: 'Fixture official CUA provider',
       createChannel() {
@@ -139,8 +141,34 @@ async function fixture({ script, cua, officialCua = false, strict = false, taskA
   ctx.tools.register(tool)
   const controller = new AbortController()
   const execute = () => ctx.tools.execute({ agent: parent.agent, calls: [call(TOOL, { goal: 'Complete the synthetic UI task' })], signal: controller.signal })
-  return { ctx, parent, seen, dispatched, execute, controller, directory, scopeFiber, questions, grants, nativeRequests }
+  return { ctx, parent, seen, dispatched, execute, controller, directory, scopeFiber, providerFiber, questions, grants, nativeRequests }
 }
+
+test('missing or foreign providers block before child model, task grant or native dispatch', async () => {
+  for (const providerName of [null, 'foreign-provider']) {
+    const f = await fixture({ providerName })
+    const batch = await f.execute()
+    assert.equal(batch.results[0].result.value.reason, 'official_provider_unavailable')
+    assert.equal(f.seen.length, 0)
+    assert.equal(f.grants.length, 0)
+    assert.equal(f.dispatched.length, 0)
+  }
+})
+
+test('provider registration loss with unchanged capabilities stops later worker dispatch', async () => {
+  let entered, release
+  const pending = new Promise(resolve => { entered = resolve })
+  const resume = new Promise(resolve => { release = resolve })
+  const f = await fixture({ cua: async () => { entered(); await resume; return { appHandle: 'app-fixture' } } })
+  const run = f.execute()
+  await pending
+  await f.providerFiber.dispose()
+  release()
+  const batch = await run
+  assert.equal(batch.results[0].result.value.reason, 'cua_provider_changed')
+  assert.equal(f.dispatched.length, 1)
+  assert.equal(f.grants[0].disposed, true)
+})
 
 test('independent Terra child uses the real Native pipeline and leaves the Flash parent route unchanged', async () => {
   const f = await fixture()
