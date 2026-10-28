@@ -19,7 +19,9 @@ The [immutable official Codex catalog](https://github.com/openai/codex/blob/e8e6
 
 The [official API model page](https://developers.openai.com/api/docs/models/gpt-6.1-terra) was opened and independently documents 1,050,000 context, 128,000 output, text/image input, Responses-only tool calling and `none/low/medium/high/xhigh/max` (Medium default). Only the 128,000 output limit supplements the Codex fallback. API context and API `none` are not silently adopted as OAuth route capabilities. The [official Codex model guide](https://learn.chatgpt.com/docs/models) documents the exact `codex -m gpt-6.1-terra` identifier.
 
-The current Host adapter derives choices from pi-ai's thinking-level map and validates requests before authentication. Terra's fallback masks Off/Minimal and enables Xhigh/Max because the pinned **Terra** OAuth catalog supports those five direct levels. This is route-specific evidence, not a copied Sol restriction or a claim that Terra's API rejects None. Off/Minimal/None/Ultra are rejected before authentication/dispatch. Ultra client orchestration is outside the maintained manual-model scope. Future native Terra entries, including their effort maps, names, budgets, pricing and capability metadata, win intact; no duplicate entry or bundled-static calibration is applied to Terra.
+The current Host adapter derives choices from pi-ai's thinking-level map and validates requests before authentication. Terra's fallback masks Off/Minimal and enables Xhigh/Max because the pinned **Terra** OAuth catalog supports those five direct levels. This is route-specific evidence, not a claim that Terra's API rejects None. Off/Minimal/None/Ultra are rejected before authentication/dispatch. Ultra client orchestration is outside the maintained manual-model scope. Terra uses the same catalog loop as Sol61, Sol6 and Luna: a future native Terra entry keeps its names, budgets, pricing and capability metadata, and the same effort mask is still overlaid on its thinking-level map, so a native `minimal`/`off` mapping cannot reintroduce levels the pinned OAuth catalog does not advertise. No duplicate entry or bundled-static context calibration is applied to Terra.
+
+Review follow-up (2026-10-28): the initial candidate kept native Terra effort maps intact, unlike Sol61/Sol6/Luna/Astra. A synthetic native entry shaped like pi-ai 0.85.1's own entries (`{ xhigh, max, minimal: 'low' }`) therefore exposed Minimal and left Off unmasked. Terra now shares the Sol loop; the native-entry regression asserts the overlaid mask.
 
 OAuth cost fields retain the existing zero placeholders because the plugin has no authoritative subscription token-price schedule. They do not imply free use or copy API pricing. The fallback retains existing Responses grammar/additional-tool/search metadata and text/image inputs; synthetic tests exercise the real Host/pi-ai path rather than just adding a display name.
 
@@ -41,8 +43,8 @@ Generated SHA-256 identities:
 
 | File | SHA-256 |
 | --- | --- |
-| `lib/index.js` | `3b246e000a99214036b8845220b0d4c95677a9bb7bb6cf347c6cd192f9fca489` |
-| `lib/bin.js` | `db4ca5d77f75fbe85e33c9124bd030e8fbd505d925cb83818170af6d4ba8d316` |
+| `lib/index.js` | `cbd65e2bcb72f08661445d031b2991a713b3f35d5aeb67bad408639e74a1bfa3` |
+| `lib/bin.js` | `9f56fc32f7479ca5744d1691265589217ef42c17950271942c1df9a7994ce91b` |
 | `lib/client.js` | `41ee1edff526e65dad940be72b41cb3916bd6ae917bd4cb09f6be13f0ca974a3` |
 
 All automated model responses and credentials are synthetic. Exact-head remote CI and the full supported-host installation matrices are not claimed by this local run. Real-account availability, route capacity, quality, computer-use execution and subscription entitlement remain unverified. Implemented, merged, released, enabled and accepted are separate states; this candidate does not claim the latter four.

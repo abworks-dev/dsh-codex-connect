@@ -28,15 +28,15 @@ it('fills Terra once with Codex budgets, image input and existing Responses tool
   expect(withOpenAICodexModels(wrapped).getModels()).toEqual(wrapped.getModels())
 })
 
-it.each(['provider', 'bundled-static'] as const)('preserves native Terra metadata intact at the %s boundary', source => {
+it.each(['provider', 'bundled-static'] as const)('keeps native Terra metadata but applies the Sol effort mask at the %s boundary', source => {
   const provider = openaiCodexProvider()
   const native = { ...provider.getModels()[0]!, id, name: 'Native Terra', contextWindow: 272_000, maxTokens: 96_000,
     cost: { input: 1, output: 2, cacheRead: 3, cacheWrite: 4 },
-    compat: { supportsStrictMode: false }, thinkingLevelMap: { off: 'none', minimal: null, max: null } as const }
+    compat: { supportsStrictMode: false }, thinkingLevelMap: { off: 'none', minimal: 'low', max: null } as const }
   const snapshot = structuredClone(native)
   const wrapped = withOpenAICodexModels({ ...provider, getModels: () => [native] }, source)
-  expect(wrapped.getModels().filter(model => model.id === id)).toEqual([snapshot])
-  expect(wrapped.getModels().find(model => model.id === id)).toBe(native)
+  expect(wrapped.getModels().filter(model => model.id === id)).toEqual([{ ...snapshot,
+    thinkingLevelMap: { off: null, minimal: null, xhigh: 'xhigh', max: 'max' } }])
   expect(native).toEqual(snapshot)
 })
 
