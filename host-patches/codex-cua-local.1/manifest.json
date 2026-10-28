@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "id": "codex-cua-local.1",
+  "baseVersion": "0.2.2-alpha.2",
+  "candidateVersion": "0.2.2-alpha.2.codex-cua-local.1",
+  "published": false,
+  "nativeArchitecture": "arm64",
+  "packages": {
+    "@deepseek-ai/dsh-agent": {
+      "baseIntegrity": "sha512-e1seyUG26WYUAFX7tJJzhtg1aBwqIR7sFijt8S9DujS9alXwEdOZAYpJG531qqRGZSlM+XNT6z5AeH5KSjqdsA==",
+      "patch": "patches/dsh-agent.patch",
+      "patchSha256": "718b1c37381f8721c2bc15471feb8dc56b36130053ee706859a2450c5ddd3c89",
+      "files": [
+        {
+          "path": "lib/index.js",
+          "baseSha256": "8673b5cfadfbb6e6ce0bcb341d0ea2877adc2986eab1c2b6c8baf32726534c92",
+          "patchedSha256": "6bd6ae249a92baa5beff076b2c2429e114ac47cbcea6b29f919c1d05440b4a21"
+        },
+        {
+          "path": "lib/types/index.d.ts",
+          "baseSha256": "2029b9ca3fabb5527210842d7a747d5847fa08bd7ec9b86a2513a85513335904",
+          "patchedSha256": "3cbe2af6d5307a1e62a8b942c35046ce5e4a0c24aa5b0a8af566b8ea1b8e0a72"
+        },
+        {
+          "path": "lib/types/runtime-types.d.ts",
+          "baseSha256": "225971d216a0f6cede3e988cc779cf0ff91187cfe0977417d17ebcea293ee514",
+          "patchedSha256": "dd306c59b7394870668a42e8e94e7c93c9cf88677acd6d4fd2603c1cf5155f80"
+        }
+      ]
+    },
+    "@deepseek-ai/dsh-agent-loop": {
+      "baseIntegrity": "sha512-lPQG7SpHdmbfWR5CRlNIMqtCR7ojJ3i1IZmnk1GzvdaHFzYTcAfxruib6a0ecTt7HQli06sLr7v1GAZi/d6M7w==",
+      "patch": "patches/dsh-agent-loop.patch",
+      "patchSha256": "530eab8dcbdd480292b9f6621fa311eb54baf0b9eff2a1f8e0eec54d191a8f19",
+      "files": [
+        {
+          "path": "lib/index.js",
+          "baseSha256": "a6fa8e0c7c90191caf5f4a3bb5c624a86e9845cf3c79d020b71420d0e20ae4c1",
+          "patchedSha256": "39377f8fa9d50079c8c8422f68af513749e279c8c410c230a9bd8d0a10738123"
+        }
+      ]
+    },
+    "@deepseek-ai/dsh-cua": {
+      "baseIntegrity": "sha512-yceImk1O0NkKTdwe8IQYX9SPmsulcJD7LtmPm7oJXunY2+4HQkJNA3qOSk5zJyr1NpWffnRdUcJvTIDgIMGOSA==",
+      "patch": "patches/dsh-cua.patch",
+      "patchSha256": "41a714bdd5a5c953abcd8410d8c19f283ed1fef53c449ac67154c54c04c1286d",
+      "files": [
+        {
+          "path": "lib/index.js",
+          "baseSha256": "e62f507fa5471f2797eb9d4f0d22f10f5edb3d49d05f2be2ea7ae6024485b2b2",
+          "patchedSha256": "f8c644645ab57538ad37546fa0edcbf244408b3927ef8eb9dea67ddc720be5b2"
+        },
+        {
+          "path": "lib/protocol.js",
+          "baseSha256": "ae494308a7808720e587cc2ca55041aa998131bada52d00cad9cd2fcdd3bb16e",
+          "patchedSha256": "c979a49870da49e06dc56c5fdce74f23430ab3e3376376b400cfc38df8162398"
+        },
+        {
+          "path": "lib/types/index.d.ts",
+          "baseSha256": "3ca4d834dde9fb52133df32ab33abe0413f7cebb6793d74c7c59c6aa95f7ac8e",
+          "patchedSha256": "3395ab61f102f45f101930f7e3f63bc54d70ad18b23f4fec2d75f227fd6e4aad"
+        }
+      ]
+    },
+    "@deepseek-ai/dsh-experimental-cua-macos": {
+      "baseIntegrity": "sha512-rHYMMIYahSn1qxntUDYYsVd5jjf5Z7svdKjHgRyaJ2JoQWgNJc26Zzgr5uTQ9IL3BkOXoj7llTOBdZMR/uKH+w==",
+      "patch": "patches/dsh-experimental-cua-macos.patch",
+      "patchSha256": "0f60ed3eb50039c3bcc9e0a7700dccd078ce9dd38208d264093103e608afb4b7",
+      "files": [
+        {
+          "path": "native/Sources/CuaNative/AXAccess.swift",
+          "baseSha256": "92036dfea0676d4c8c5ef4957ddda0bd936739b01554613f7e9fd1ee19c0aba6",
+          "patchedSha256": "67b050b79526ea3ded24aeeba8ef60c6176e2f81394e8c543f938949accee217"
+        },
+        {
+          "path": "native/Sources/CuaNative/AXWorker.swift",
+          "baseSha256": "e06f40f7b365e56469618d2451ade877ed7df5c01a69d933430f2ae2b9d664f1",
+          "patchedSha256": "c42af7175b69da68f19202245ed3d576c3a78aeaf37c3df6d53c3488acf781a9"
+        },
+        {
+          "path": "native/Sources/CuaNative/NativeProtocol.generated.swift",
+          "baseSha256": "89c33f579d613ef76aa21cf4e8aa994a05eeb721f51907e66dca35963a82f073",
+          "patchedSha256": "8cec7c2c3f80a1489a08d6d3c359e8633928c9e9ed00c02d72ade9ff8ed2ff03"
+        },
+        {
+          "path": "native/Sources/CuaNative/WindowScopePolicy.swift",
+          "baseSha256": null,
+          "patchedSha256": "1f6337f2bb5e58b88b15c918488bc094b47270a0955fad9b5c2eedf81cd6dfbb"
+        }
+      ]
+    }
+  }
+}

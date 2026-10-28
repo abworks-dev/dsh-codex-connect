@@ -4,6 +4,8 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { LlmCallConfig } from '@deepseek-ai/dsh-llm'
 import { isAgentLoopRequest, QUOTA_EXCEEDED_CODE } from '@deepseek-ai/dsh-llm'
 import type { Agent } from '@deepseek-ai/dsh-agent'
+import * as AgentHost from '@deepseek-ai/dsh-agent'
+import type { Scoped } from '@deepseek-ai/dsh-scope'
 import { OPENAI_CODEX_PROVIDER } from './store.ts'
 import type { OpenAICodexQuotaState } from './quota-state.ts'
 import { ReserveRequestPermits, ReserveReturnStore } from './reserve-state.ts'
@@ -11,6 +13,15 @@ import {
   OPENAI_CODEX_RESERVE_MODEL,
   OPENAI_CODEX_RESERVE_NORMAL_MODEL,
 } from './reserve-usage.ts'
+
+/** Local Host extension; old published Hosts retain the existing request waterfall. */
+declare module '@deepseek-ai/cordis' {
+  interface Events {
+    'agent/route-request'(this: Scoped<Agent>, payload: {
+      agent: Agent; turn: number; step: number; signal: AbortSignal
+    }, next: () => Promise<LlmCallConfig>): Promise<LlmCallConfig>
+  }
+}
 
 /** Dependencies scoped to one plugin instance; no account or usage cache is shared globally. */
 export interface ReserveRoutingOptions {
@@ -26,6 +37,7 @@ export interface ReserveRoutingOptions {
  * optional eligibility checks fail; a running Reserve conversation fails closed instead of guessing.
  */
 export function registerReserveRouting(ctx: Context, options: ReserveRoutingOptions): () => Promise<void> {
+  const earlyRouting = Reflect.get(AgentHost, 'REQUEST_ROUTE_VERSION') === 1
   const lifetime = new AbortController()
   const inFlight = new Set<Promise<LlmCallConfig>>()
   const requestAccounts = new Map<string, string>()
@@ -99,7 +111,7 @@ export function registerReserveRouting(ctx: Context, options: ReserveRoutingOpti
     const reserve: LlmCallConfig = { provider: OPENAI_CODEX_PROVIDER, model: OPENAI_CODEX_RESERVE_MODEL }
     return reserve
   }
-  ctx.on('agent/request', ({ agent, signal }, next) => {
+  ctx.on(earlyRouting ? 'agent/route-request' : 'agent/request', ({ agent, signal }, next) => {
     const pending = route(agent, signal, next)
     inFlight.add(pending)
     return pending.finally(() => { inFlight.delete(pending) })
@@ -123,7 +135,7 @@ export function registerReserveRouting(ctx: Context, options: ReserveRoutingOpti
       && decision.normalModel === OPENAI_CODEX_RESERVE_NORMAL_MODEL
       && (decision.blockedModel === undefined || decision.blockedModel === previous.model)
     const recovering = previous.model === OPENAI_CODEX_RESERVE_MODEL && decision.kind === 'ordinary'
-    return entering || recovering ? { kind: 'retry' } : next()
+    return entering || recovering ? { kind: 'retry', ...(earlyRouting ? { reprepare: true as const } : {}) } : next()
   }, { prepend: true })
   const clearSession = (agent: Agent): void => {
     const sessionId = String(agent.session.id)

@@ -1,0 +1,82 @@
+--- a/lib/index.js
++++ b/lib/index.js
+@@ -668,8 +668,18 @@
+ 		if (this.phase.kind !== "running") throw new Error(`agent "${this.id}": pre-step outside running phase`);
+ 		const signal = this.phase.abort.signal;
+ 		const claimed = this.inbox.claim(target, position.turn);
+-		const selection = this.model.current();
+-		if (selection === void 0) throw new Error(`agent "${this.id}" has no provider/model: set AgentOptions.provider and AgentOptions.model or record a model selection`);
++		return this.prepareStepWorld(claimed, position, signal);
++	}
++	/** Local candidate: one route admission before every fresh tool/prompt world. */
++	async prepareStepWorld(claimed, position, signal) {
++		const selected = this.model.current();
++		if (selected === void 0) throw new Error(`agent "${this.id}" has no provider/model: set AgentOptions.provider and AgentOptions.model or record a model selection`);
++		const routeConfig = deepFreeze(structuredClone(await this.dispatch.waterfall("agent/route-request", {
++			...position, signal
++		}, () => Promise.resolve(this.requestSeed(selected)))));
++		signal.throwIfAborted();
++		const selection = { provider: routeConfig.provider, model: routeConfig.model,
++			...(routeConfig.reasoningEffort === void 0 ? {} : { reasoningEffort: routeConfig.reasoningEffort }) };
+ 		const toolSet = await this.loopCtx.tools.resolve({
+ 			agent: this,
+ 			modelSelection: selection,
+@@ -704,6 +714,7 @@
+ 				...decision,
+ 				assembly,
+ 				selection,
++				routeConfig,
+ 				toolSet
+ 			};
+ 		} catch (error) {
+@@ -835,11 +846,11 @@
+ 		if (this.phase.kind !== "running") throw new Error(`agent "${this.id}": step outside running phase`);
+ 		const { turn, step, abort: { signal } } = this.phase;
+ 		signal.throwIfAborted();
+-		const { assembly } = decision;
+-		const renderedPrompt = renderPrompt(assembly);
++		let { assembly } = decision;
++		let renderedPrompt = renderPrompt(assembly);
+ 		let firstAttempt = true;
+ 		while (true) {
+-			const { config, preparedCall } = await this.prepareRequest(turn, step, decision.selection, signal);
++			const { config, preparedCall } = await this.prepareRequest(turn, step, decision.selection, signal, decision.routeConfig);
+ 			const sections = renderContextSections(this.loopCtx.systemPrompt.refreshContext(assembly, {
+ 				...assembleContextFor(this, signal),
+ 				modelSelection: decision.selection
+@@ -936,6 +947,14 @@
+ 					}, () => Promise.resolve(void 0));
+ 					signal.throwIfAborted();
+ 					if (action?.kind !== "retry") throw new LlmError(finish.failure.message, finish.failure.code, finish.failure);
++					if (action.reprepare === true) {
++						const prepared = await this.prepareStepWorld([], { turn, step }, signal);
++						if (prepared.kind === "reject") throw new Error("Request recovery was denied during route preparation");
++						decision.toolSet.dispose();
++						Object.assign(decision, prepared);
++						assembly = decision.assembly;
++						renderedPrompt = renderPrompt(assembly);
++					}
+ 					continue;
+ 				}
+ 				const message = createAssistantMessage({
+@@ -983,14 +1002,13 @@
+ 		}
+ 	}
+ 	/** Resolve request config for the step's selection and bind its adapter before admitting model-visible input. */
+-	async prepareRequest(turn, step, selection, signal) {
+-		const { session } = this;
++	requestSeed(selection) {
+ 		const maxTokens = this.options.maxTokens;
+-		const { provider: _provider, model: _model, reasoningEffort: _effort, ...controls } = this.requestHeaderLogged ? requestProposal(session.requestHeader()) : maxTokens === void 0 ? {} : { maxTokens };
+-		const seedConfig = deepFreeze(structuredClone({
+-			...controls,
+-			...selection
+-		}));
++		const { provider: _provider, model: _model, reasoningEffort: _effort, ...controls } = this.requestHeaderLogged ? requestProposal(this.session.requestHeader()) : maxTokens === void 0 ? {} : { maxTokens };
++		return deepFreeze(structuredClone({ ...controls, ...selection }));
++	}
++	async prepareRequest(turn, step, selection, signal, admittedRoute) {
++		const seedConfig = admittedRoute ?? this.requestSeed(selection);
+ 		const proposedConfig = await this.dispatch.waterfall("agent/request", {
+ 			turn,
+ 			step,

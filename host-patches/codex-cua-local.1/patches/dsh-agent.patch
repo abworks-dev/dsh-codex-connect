@@ -1,0 +1,42 @@
+--- a/lib/index.js
++++ b/lib/index.js
+@@ -829,3 +829,6 @@
+ };
+ //#endregion
+ export { AgentModel, AgentRegistry, AgentRegistry as default, agentCarrier, agentEvents, assembleContextFor, emitAgentEvent, foldConsumedWork, installModelSelection, modelSelectionProjectionDefinition };
++
++// Explicit local Host capability; not present in the published release.
++export const REQUEST_ROUTE_VERSION = 1;
+--- a/lib/types/index.d.ts
++++ b/lib/types/index.d.ts
+@@ -390,4 +390,6 @@
+     private releaseInitiatorRun;
+ }
+ export default AgentRegistry;
+-//# sourceMappingURL=index.d.ts.map+//# sourceMappingURL=index.d.ts.map
++/** Local candidate: route configuration before preparing tools and prompts. */
++export declare const REQUEST_ROUTE_VERSION: 1;
+--- a/lib/types/runtime-types.d.ts
++++ b/lib/types/runtime-types.d.ts
+@@ -125,6 +125,8 @@
+ /** Action returned by a listener that owns model-request recovery. */
+ export type RequestErrorAction = {
+     kind: 'retry';
++    /** Re-admit route/tools/prompt after a failed attempt, preserving already committed input. */
++    reprepare?: true;
+ } | undefined;
+ /** Why a session lifecycle began; seeded creates are `startup`, while persisted loads are `resume`. */
+ export type SessionStartSource = 'startup' | 'resume' | 'clear' | 'compact';
+@@ -359,6 +361,12 @@
+          * Scope-filtered dispatch (`@deepseek-ai/dsh-scope`): agent-scoped listeners receive only that agent.
+          * @mode waterfall
+         */
++        /** Local candidate: asynchronous route selection before tool and prompt preparation.
++         * Returned controls are captured with this attempt; caller must observe signal.
++         * Does not mutate the user's durable next-model selection. */
++        'agent/route-request'(this: Scoped<Agent>, payload: {
++            agent: Agent; turn: number; step: number; signal: AbortSignal;
++        }, next: () => Promise<LlmCallConfig>): Promise<LlmCallConfig>;
+         'agent/request'(this: Scoped<Agent>, payload: {
+             agent: Agent;
+             turn: number;
