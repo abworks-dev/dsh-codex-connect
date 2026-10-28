@@ -1,5 +1,5 @@
 /** Keyless exact-published-Host composition check; never uses a daily profile or native driver. */
-import { cp, mkdtemp, mkdir, readFile, writeFile, rm } from 'node:fs/promises'
+import { cp, mkdtemp, writeFile, rm } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -28,12 +28,12 @@ try {
   for (const name of ['dsh', 'dsh-agent', 'dsh-tools', 'dsh-agent-preset-registry', 'dsh-cua', 'dsh-tool-executor-native', 'dsh-experimental-cua-macos']) {
     if (require(`@deepseek-ai/${name}/package.json`).version !== version) throw new Error(`Wrong exact Host package: ${name}`)
   }
-  const candidate = join(fixture, 'computer-use-candidate')
-  await mkdir(candidate)
-  await cp(join(root, 'packages/dsh-codex-computer-use'), candidate, { recursive: true })
-  const result = await command(process.execPath, ['--test', join(candidate, 'test/host.test.mjs')])
-  process.stdout.write(result.stdout)
-  const report = { schemaVersion: 1, dshVersion: version, provider: 'scripted_in_memory', cuaTransport: 'synthetic', realModelRequests: 0, desktopActions: 0, parityAccepted: false }
-  process.stdout.write(`${JSON.stringify(report)}\n`)
-  await rm(candidate, { recursive: true, force: true })
+  const candidate = await mkdtemp(join(fixture, 'computer-use-candidate-'))
+  try {
+    await cp(join(root, 'packages/dsh-codex-computer-use'), candidate, { recursive: true })
+    const result = await command(process.execPath, ['--test', join(candidate, 'test/host.test.mjs')])
+    process.stdout.write(result.stdout)
+    const report = { schemaVersion: 1, dshVersion: version, provider: 'scripted_in_memory', cuaTransport: 'synthetic', realModelRequests: 0, desktopActions: 0, parityAccepted: false }
+    process.stdout.write(`${JSON.stringify(report)}\n`)
+  } finally { await rm(candidate, { recursive: true, force: true }) }
 } finally { if (!supplied) await rm(fixture, { recursive: true, force: true }) }

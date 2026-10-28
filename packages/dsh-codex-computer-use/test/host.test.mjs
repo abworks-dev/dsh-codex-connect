@@ -56,11 +56,18 @@ async function fixture({ script, cua, officialCua = false, config = {} } = {}) {
     async *stream(options) {
       seen.push(options)
       const blocks = script ?? [call('cua', { method: 'getApp', params: { selector: target.application } }),
-        call('cua', { method: 'getState', params: { appHandle: 'app-fixture', windowId: 7 } }),
-        call('cua', { method: 'setValue', params: { appHandle: 'app-fixture', snapshotId: 'snapshot-fixture', elementIndex: 2, value: 'synthetic' } }),
+        call('cua', { method: 'screenshot', params: { appHandle: 'app-fixture', windowId: 7 } }),
+        call('cua', { method: 'click', params: { appHandle: 'app-fixture', windowId: 7, x: 20, y: 20 } }),
+        call('cua', { method: 'screenshot', params: { appHandle: 'app-fixture', windowId: 7 } }),
         call('finish_computer_use', { status: 'completed', summary: 'Synthetic success observed' })]
       const block = blocks[index++]
-      if (block) yield *toolStream(block)
+      if (Array.isArray(block)) {
+        for (const [i, item] of block.entries()) {
+          yield { type: 'block-start', index: i, blockType: 'tool-call' }
+          yield { type: 'block-end', index: i, block: item }
+        }
+        yield { type: 'finish', reason: { kind: 'tool-call' } }
+      } else if (block) yield *toolStream(block)
       else {
         yield { type: 'block-start', index: 0, blockType: 'text' }
         yield { type: 'block-end', index: 0, block: { type: 'text', text: 'done' } }
@@ -98,6 +105,7 @@ async function fixture({ script, cua, officialCua = false, config = {} } = {}) {
         if (cua) return cua(args, exec)
         if (args.method === 'getApp') return { appHandle: 'app-fixture' }
         if (args.method === 'getState') return { windowId: 7, snapshotId: 'snapshot-fixture' }
+        if (args.method === 'screenshot') return { windowId: 7 }
         return { acted: true }
       },
     })
@@ -118,8 +126,8 @@ test('independent Terra child uses the real Native pipeline and leaves the Flash
   const value = batch.results[0].result.value
   assert.equal(value.status, 'completed')
   assert.equal(value.cleanup, 'drained')
-  assert.equal(value.modelSteps, 4)
-  assert.equal(f.dispatched.length, 3)
+  assert.equal(value.modelSteps, 5)
+  assert.equal(f.dispatched.length, 4)
   assert.ok(f.dispatched.every(call => call.agent.id === value.workerSessionId && call.agent !== f.parent.agent))
   assert.equal(f.ctx.agents.get(value.workerSessionId), undefined)
   assert.deepEqual(f.parent.agent.model.current(), { provider: 'deepseek', model: 'flash' })
@@ -138,9 +146,52 @@ test('an inherited shell and run_code cannot execute', async () => {
 
 test('wrong applications/windows and unobserved AX snapshots are denied before transport', () => {
   assert.equal(operationDenial({ method: 'getApp', params: { selector: 'Personal App' } }, target), 'CUA_APPLICATION_DENIED')
-  assert.equal(operationDenial({ method: 'getState', params: { appHandle: 'a', windowId: 99 } }, target, 'a'), 'CUA_WINDOW_DENIED')
-  assert.equal(operationDenial({ method: 'setValue', params: { appHandle: 'a', snapshotId: 'stolen', elementIndex: 1 } }, target, 'a'), 'CUA_SNAPSHOT_DENIED')
+  assert.equal(operationDenial({ method: 'screenshot', params: { appHandle: 'a', windowId: 99 } }, target, 'a'), 'CUA_WINDOW_DENIED')
+  assert.equal(operationDenial({ method: 'setValue', params: { appHandle: 'a', snapshotId: 'stolen', elementIndex: 1 } }, target, 'a'), 'CUA_AX_WINDOW_OWNERSHIP_UNVERIFIED')
   assert.equal(operationDenial({ method: 'typeText', params: { appHandle: 'a', text: 'outside' } }, target, 'a'), 'CUA_OPERATION_DENIED')
+  for (const variant of [{ mouseButton: 'right' }, { mouseButton: 'middle' }, { modifiers: ['control'] }, { modifiers: ['command'] }, { holdMs: 1000 }]) {
+    assert.equal(operationDenial({ method: 'click', params: { appHandle: 'a', windowId: 7, x: 20, y: 20, ...variant } }, target, 'a'), 'CUA_MENU_INPUT_DENIED')
+  }
+})
+
+test('a pre-input screenshot cannot support a completed result after input', async () => {
+  const f = await fixture({ script: [
+    call('cua', { method: 'getApp', params: { selector: target.application } }),
+    call('cua', { method: 'screenshot', params: { appHandle: 'app-fixture', windowId: 7 } }),
+    call('cua', { method: 'click', params: { appHandle: 'app-fixture', windowId: 7, x: 20, y: 20 } }),
+    call('finish_computer_use', { status: 'completed', summary: 'unverified' }),
+  ] })
+  const batch = await f.execute()
+  assert.notEqual(batch.results[0].result.value.status, 'completed')
+})
+
+test('multi-call batches cannot race a refusal or observation update against later input', async () => {
+  for (const grouped of [
+    [call('cua', { method: 'screenshot', params: { appHandle: 'app-fixture', windowId: 7 } }), call('cua', { method: 'click', params: { appHandle: 'app-fixture', windowId: 7, x: 20, y: 20 } })],
+    [call('cua', { method: 'scroll', params: { appHandle: 'app-fixture', windowId: 7, x: 20, y: 20, deltaLinesY: 2, deltaLinesX: 0 } }), call('finish_computer_use', { status: 'completed', summary: 'unverified' })],
+  ]) {
+    const f = await fixture({ script: [call('cua', { method: 'getApp', params: { selector: target.application } }), grouped] })
+    const batch = await f.execute()
+    assert.equal(batch.results[0].result.value.status, 'blocked')
+    assert.equal(batch.results[0].result.value.reason, 'single_call_required')
+    assert.equal(f.dispatched.length, 1)
+  }
+})
+
+test('a window-tagged snapshot cannot authorize application-menu or other AX elements', async () => {
+  for (const params of [
+    { appHandle: 'app-fixture', snapshotId: 'snapshot-fixture', elementIndex: 0 },
+    { appHandle: 'app-fixture', snapshotId: 'snapshot-fixture', elementIndex: 9, windowId: 7 },
+    { appHandle: 'app-fixture', snapshotId: 'snapshot-fixture', elementIndex: 2, mouseButton: 'right' },
+  ]) {
+    const f = await fixture({ script: [call('cua', { method: 'getApp', params: { selector: target.application } }), call('cua', { method: 'click', params })] })
+    const batch = await f.execute()
+    assert.equal(batch.results[0].result.value.status, 'blocked')
+    assert.equal(batch.results[0].result.value.reason, 'host_window_scope_unverified')
+    assert.equal(f.dispatched.length, 1)
+  }
+  assert.equal(operationDenial({ method: 'getState', params: { appHandle: 'a', windowId: 7, includeMenus: false } }, target, 'a'), 'CUA_AX_WINDOW_OWNERSHIP_UNVERIFIED')
+  assert.equal(operationDenial({ method: 'performSecondaryAction', params: { appHandle: 'a', elementIndex: 1, action: 'AXPress' } }, target, 'a'), 'CUA_AX_WINDOW_OWNERSHIP_UNVERIFIED')
 })
 
 test('delegated application approval absence is blocked with no fallback', async () => {
@@ -156,6 +207,23 @@ test('official published CUA returns blocked when no delegated consent answerer 
   const batch = await f.execute()
   assert.equal(batch.results[0].result.value.status, 'blocked')
   assert.equal(batch.results[0].result.value.reason, 'application_authorization_required')
+})
+
+test('a Host-reported in-flight revocation stops later actions', { timeout: 3000 }, async () => {
+  let entered, revoke
+  const waiting = new Promise(resolve => { entered = resolve })
+  const f = await fixture({ cua: async args => {
+    if (args.method === 'getApp') return { appHandle: 'app-fixture' }
+    entered()
+    return new Promise((_resolve, reject) => { revoke = () => reject(new Error('APP_ACCESS_REVOKED: synthetic Host revocation')) })
+  } })
+  const running = f.execute()
+  await waiting
+  revoke()
+  const batch = await running
+  assert.equal(batch.results[0].result.value.status, 'blocked')
+  assert.equal(batch.results[0].result.value.reason, 'application_access_revoked')
+  assert.equal(f.dispatched.length, 2)
 })
 
 test('caller cancellation drains in-flight transport before releasing the desktop lease', { timeout: 3000 }, async () => {
