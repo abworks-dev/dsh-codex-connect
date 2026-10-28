@@ -1,47 +1,48 @@
 --- a/native/Sources/CuaNative/AXAccess.swift
 +++ b/native/Sources/CuaNative/AXAccess.swift
-@@ -336,7 +336,10 @@
-         if error == .success { enabledProcesses.insert(key) }
-     }
- 
+@@ -6,0 +7,5 @@
++
++struct AXWindowConstraint {
++    let owner: ProcessIdentity
++    let windowID: UInt32
++}
+@@ -171 +176 @@
+-    func perform(_ element: AXUIElement, _ action: String) throws {
++    func perform(_ element: AXUIElement, _ action: String, constraint: AXWindowConstraint? = nil) throws {
+@@ -173,0 +179,4 @@
++        if let constraint {
++            if action == "AXShowMenu" { throw NativeFailure(code: "WINDOW_SCOPE_MISMATCH", message: "Menu actions are excluded from strict windows") }
++            try requireWindow(element, expected: constraint.windowID, owner: constraint.owner)
++        }
+@@ -177 +186 @@
+-    func setValue(_ element: AXUIElement, _ value: String) throws {
++    func setValue(_ element: AXUIElement, _ value: String, constraint: AXWindowConstraint? = nil) throws {
+@@ -179,0 +189 @@
++        if let constraint { try requireWindow(element, expected: constraint.windowID, owner: constraint.owner) }
+@@ -212 +222 @@
+-    func selectText(_ element: AXUIElement, text: String, prefix: String?, suffix: String?, mode: String) throws {
++    func selectText(_ element: AXUIElement, text: String, prefix: String?, suffix: String?, mode: String, constraint: AXWindowConstraint? = nil) throws {
+@@ -224,0 +235 @@
++        if let constraint { try requireWindow(element, expected: constraint.windowID, owner: constraint.owner) }
+@@ -339 +350,4 @@
 -    func project(identity: ProcessIdentity, windowID requested: UInt32?, maxElements: Int, maxDepth: Int, includeMenus: Bool = false, details: Bool = false) throws -> AXProjection {
 +    func project(identity: ProcessIdentity, windowID requested: UInt32?, maxElements: Int, maxDepth: Int, includeMenus: Bool = false, details: Bool = false, strictWindowScope: Bool = false) throws -> AXProjection {
 +        if strictWindowScope && (requested == nil || includeMenus) {
 +            throw NativeFailure(code: "WINDOW_SCOPE_REQUIRED", message: "Strict AX observations require a window and exclude application menus")
 +        }
-         let app = AXUIElementCreateApplication(identity.pid)
-         try enableAX(app, identity: identity)
-         var roots = try children(app)
-@@ -380,11 +383,11 @@
-                 return role == "AXSheet" || ["AXDialog", "AXSystemDialog", "AXSheet"].contains(subrole ?? "") || ["open-panel", "save-panel"].contains(identifier ?? "")
-             }
-             roots = matches
+@@ -383 +397 @@
 -            for root in nonWindows {
 +            for root in nonWindows where !strictWindowScope {
-                 let role = try string(root, "AXRole")
-                 if !dialog || role != "AXMenuBar" { roots.append(root) }
-             }
+@@ -387 +401 @@
 -            if !dialog { roots.append(contentsOf: anonymousSheets) }
 +            if !strictWindowScope && !dialog { roots.append(contentsOf: anonymousSheets) }
-         }
-         var visited: [CFHashCode: [AXUIElement]] = [:]
-         var count = 0
-@@ -404,6 +407,11 @@
-             count += 1
-             let observation = try nodeObservation(attributes: metadata(element), fallback: { try self.attribute(element, $0) })
-             let role = observation.role
+@@ -406,0 +421,5 @@
 +            if strictWindowScope, let requested {
 +                if role.hasPrefix("AXMenu") { return }
 +                do { try requireWindow(element, expected: requested, owner: identity) }
 +                catch let failure as NativeFailure where failure.code == "WINDOW_SCOPE_MISMATCH" || failure.code == "WINDOW_UNAVAILABLE" { return }
 +            }
-             let observed = observation.attribute
-             let title = try stringValue(observed("AXTitle"), attribute: "AXTitle")
-             let value = try controlValue(observed("AXValue"))
-@@ -467,6 +475,26 @@
-         return AXProjection(tree: lines.joined(separator: "\n"), elements: elements, indexed: indexed, focusedWindowID: focusedID, truncated: truncated)
-     }
- 
+@@ -469,0 +489,20 @@
 +    /// Live identity check shared by strict observations and every indexed action.
 +    func requireWindow(_ element: AXUIElement, expected: UInt32, owner: ProcessIdentity) throws {
 +        let role = try string(element, "AXRole") ?? ""
@@ -62,78 +63,64 @@
 +        }
 +    }
 +
-     func enclosingWindow(_ element: AXUIElement, owner: ProcessIdentity) throws -> WindowInfo {
-         var current: AXUIElement? = element
-         var visited: [AXUIElement] = []
 --- a/native/Sources/CuaNative/AXWorker.swift
 +++ b/native/Sources/CuaNative/AXWorker.swift
-@@ -18,6 +18,7 @@
-     let id: String
-     let scope: SnapshotScope
-     let elements: [Int: AXUIElement]
+@@ -20,0 +21 @@
 +    var strictWindowScope: Bool = false
- }
- struct CaptureTarget: Sendable {
-     let appHandle: String
-@@ -151,6 +152,10 @@
-         let value = try snapshot(handle, params.string("snapshotId"))
-         let index = try params.integer("elementIndex", in: 0...Int.max)
-         guard let element = value.elements[index] else { throw RequestParameters.invalid("elementIndex is absent from the selected snapshot") }
+@@ -149,0 +151,8 @@
++    private func constraint(_ value: NativeSnapshot, handle: String) throws -> AXWindowConstraint? {
++        guard value.strictWindowScope else { return nil }
++        guard let window = value.scope.windowID else { throw NativeFailure(code: "WINDOW_SCOPE_REQUIRED", message: "Strict snapshot has no owning window") }
++        return AXWindowConstraint(owner: try validateIdentity(handle), windowID: window)
++    }
++    private func constraint(_ handle: String, _ params: RequestParameters) throws -> AXWindowConstraint? {
++        try constraint(snapshot(handle, params.string("snapshotId")), handle: handle)
++    }
+@@ -153,0 +163,4 @@
 +        if value.strictWindowScope {
 +            guard let expected = value.scope.windowID else { throw NativeFailure(code: "WINDOW_SCOPE_REQUIRED", message: "Strict snapshot has no owning window") }
 +            try ax().requireWindow(element, expected: expected, owner: validateIdentity(handle))
 +        }
-         return element
-     }
-     private func coordinateSnapshot(_ handle: String, _ params: RequestParameters, _ windowID: UInt32) throws {
-@@ -287,13 +292,14 @@
-         case "activate":
-             return .foreground(ForegroundPlan(appHandle: handle, identity: identity, snapshotID: nil, index: nil, targetWindowID: nil, role: nil, main: nil, minimized: nil))
-         case "getState":
+@@ -289,0 +303 @@
 +            let strict = try params.optionalBoolean("strictWindowScope") ?? false
-             let window = try params.optionalWindowID()
-             if let window { _ = try NativePlatform.ownedWindow(identity.pid, window) }
-             let projection: AXProjection
-             do {
-                 projection = try ax().project(identity: identity, windowID: window,
-                     maxElements: params.integer("maxElements", in: 1...10000), maxDepth: params.integer("maxDepth", in: 1...100),
+@@ -296 +310 @@
 -                    includeMenus: params.optionalBoolean("includeMenus") ?? false, details: params.optionalBoolean("details") ?? false)
 +                    includeMenus: params.optionalBoolean("includeMenus") ?? false, details: params.optionalBoolean("details") ?? false, strictWindowScope: strict)
-             } catch let failure as NativeFailure {
-                 throw Self.observationFailure(failure)
-             }
-@@ -302,16 +308,17 @@
-             try NativePlatform.requireAccessibility()
-             if let window { _ = try NativePlatform.ownedWindow(identity.pid, window) }
-             try cancellation.check()
+@@ -305 +319 @@
 -            let observedWindows = NativePlatform.windows().filter { $0.pid == identity.pid }
 +            let observedWindows = NativePlatform.windows().filter { $0.pid == identity.pid && (!strict || $0.windowID == window) }
-             let id = try identifier("snapshot")
-             let scope = SnapshotScope(appHandle: handle, windowID: window)
+@@ -308 +322 @@
 -            snapshots[scope] = NativeSnapshot(id: id, scope: scope, elements: projection.indexed)
 +            snapshots[scope] = NativeSnapshot(id: id, scope: scope, elements: projection.indexed, strictWindowScope: strict)
-             for observed in observedWindows where window == nil || observed.windowID == window {
-                 observedWindowBounds[handle, default: [:]][observed.windowID] = observed.bounds
-             }
-             return .result(.object(["appHandle": .string(handle), "pid": .number(Double(identity.pid)),
-                 "windowId": window.map { .number(Double($0)) } ?? .null,
+@@ -314 +328,2 @@
 -                "focusedWindowId": projection.focusedWindowID.map { .number(Double($0)) } ?? .null,
 +                "focusedWindowId": (!strict || projection.focusedWindowID == window) ? (projection.focusedWindowID.map { .number(Double($0)) } ?? .null) : .null,
 +                "windowScope": .string(strict ? "strict-window" : "application"),
-                 "snapshotId": .string(id), "tree": .string(projection.tree), "elements": .array(projection.elements),
-                 "windows": .array(observedWindows.map(\.json)), "truncated": .bool(projection.truncated)]))
-         case "screenshot":
+@@ -335 +350 @@
+-        case "setValue": try ax().setValue(element(handle, params), params.string("value"))
++        case "setValue": try ax().setValue(element(handle, params), params.string("value"), constraint: constraint(handle, params))
+@@ -338 +353 @@
+-                                suffix: params.optionalString("suffix"), mode: params.optionalString("selectionType") ?? "text")
++                                suffix: params.optionalString("suffix"), mode: params.optionalString("selectionType") ?? "text", constraint: constraint(handle, params))
+@@ -349 +364 @@
+-            try ax().perform(selected, action)
++            try ax().perform(selected, action, constraint: constraint(handle, params))
+@@ -368 +383 @@
+-                        try ax().perform(selected, action)
++                        try ax().perform(selected, action, constraint: constraint(handle, params))
+@@ -469 +484 @@
+-        guard let id = plan.snapshotID, let index = plan.index, let element = try snapshot(plan.appHandle, id).elements[index] else {
++        guard let id = plan.snapshotID, let index = plan.index else {
+@@ -472 +487,3 @@
+-        try ax().perform(element, "AXRaise")
++        let value = try snapshot(plan.appHandle, id)
++        guard let element = value.elements[index] else { throw NativeFailure(code: "STALE_SNAPSHOT", message: "Raise target is no longer available") }
++        try ax().perform(element, "AXRaise", constraint: constraint(value, handle: plan.appHandle))
 --- a/native/Sources/CuaNative/NativeProtocol.generated.swift
 +++ b/native/Sources/CuaNative/NativeProtocol.generated.swift
-@@ -9,7 +9,7 @@
-         "findApps": ["maxAppMatches", "query"],
-         "getApp": ["selector"],
-         "getCapabilities": [],
+@@ -12 +12 @@
 -        "getState": ["appHandle", "details", "includeMenus", "maxDepth", "maxElements", "windowId"],
 +        "getState": ["appHandle", "details", "includeMenus", "maxDepth", "maxElements", "strictWindowScope", "windowId"],
-         "hover": ["appHandle", "elementIndex", "snapshotId", "windowId", "x", "y"],
-         "launchApp": ["appHandle"],
-         "listApps": [],
 --- /dev/null
 +++ b/native/Sources/CuaNative/WindowScopePolicy.swift
 @@ -0,0 +1,13 @@

@@ -4,7 +4,6 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { LlmCallConfig } from '@deepseek-ai/dsh-llm'
 import { isAgentLoopRequest, QUOTA_EXCEEDED_CODE } from '@deepseek-ai/dsh-llm'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import * as AgentHost from '@deepseek-ai/dsh-agent'
 import type { Scoped } from '@deepseek-ai/dsh-scope'
 import { OPENAI_CODEX_PROVIDER } from './store.ts'
 import type { OpenAICodexQuotaState } from './quota-state.ts'
@@ -37,7 +36,11 @@ export interface ReserveRoutingOptions {
  * optional eligibility checks fail; a running Reserve conversation fails closed instead of guessing.
  */
 export function registerReserveRouting(ctx: Context, options: ReserveRoutingOptions): () => Promise<void> {
-  const earlyRouting = Reflect.get(AgentHost, 'REQUEST_ROUTE_VERSION') === 1
+  // A plugin can retain an older, compatible SDK copy. The live Host service,
+  // rather than that copy's exports, owns the routing capability.
+  const earlyRouting = (agent: Agent): boolean => (agent.ctx?.get('agents') as unknown as {
+    requestRoutingVersion?: number
+  } | undefined)?.requestRoutingVersion === 1
   const lifetime = new AbortController()
   const inFlight = new Set<Promise<LlmCallConfig>>()
   const requestAccounts = new Map<string, string>()
@@ -111,11 +114,13 @@ export function registerReserveRouting(ctx: Context, options: ReserveRoutingOpti
     const reserve: LlmCallConfig = { provider: OPENAI_CODEX_PROVIDER, model: OPENAI_CODEX_RESERVE_MODEL }
     return reserve
   }
-  ctx.on(earlyRouting ? 'agent/route-request' : 'agent/request', ({ agent, signal }, next) => {
+  const admitRoute = ({ agent, signal }: { agent: Agent; signal: AbortSignal }, next: () => Promise<LlmCallConfig>) => {
     const pending = route(agent, signal, next)
     inFlight.add(pending)
     return pending.finally(() => { inFlight.delete(pending) })
-  }, { prepend: true })
+  }
+  ctx.on('agent/route-request', admitRoute, { prepend: true })
+  ctx.on('agent/request', (event, next) => earlyRouting(event.agent) ? next() : admitRoute(event, next), { prepend: true })
   ctx.on('agent/request-error', async ({ agent, turn, provider, failure, signal }, next) => {
     if (provider !== OPENAI_CODEX_PROVIDER || !options.enabled() || failure.code !== QUOTA_EXCEEDED_CODE) return next()
     const sessionId = String(agent.session.id)
@@ -135,7 +140,7 @@ export function registerReserveRouting(ctx: Context, options: ReserveRoutingOpti
       && decision.normalModel === OPENAI_CODEX_RESERVE_NORMAL_MODEL
       && (decision.blockedModel === undefined || decision.blockedModel === previous.model)
     const recovering = previous.model === OPENAI_CODEX_RESERVE_MODEL && decision.kind === 'ordinary'
-    return entering || recovering ? { kind: 'retry', ...(earlyRouting ? { reprepare: true as const } : {}) } : next()
+    return entering || recovering ? { kind: 'retry', ...(earlyRouting(agent) ? { reprepare: true as const } : {}) } : next()
   }, { prepend: true })
   const clearSession = (agent: Agent): void => {
     const sessionId = String(agent.session.id)
@@ -145,6 +150,9 @@ export function registerReserveRouting(ctx: Context, options: ReserveRoutingOpti
   }
   ctx.on('agent/error', ({ agent }) => { clearSession(agent) })
   ctx.on('agent/turn-stopping', ({ agent }) => { clearSession(agent) })
+  // Early routing can issue a permit before a pre-step policy rejects admission.
+  ctx.on('agent/status', ({ agent, status }) => { if (status === 'idle') clearSession(agent) })
+  ctx.on('agent/disposed', ({ agent }) => { clearSession(agent) })
   const stop = async (): Promise<void> => {
     lifetime.abort()
     options.permits.clear()

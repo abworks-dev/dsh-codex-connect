@@ -1,73 +1,49 @@
 --- a/lib/index.js
 +++ b/lib/index.js
-@@ -1575,6 +1575,7 @@
- /** Validated host configuration; no driver is downloaded at runtime. */
- const CuaConfig = Schema.object({
- 	agentPreset: Schema.union([Schema.string().min(1), Schema.const(false)]).default("ptc"),
+@@ -1120,0 +1121 @@
++	windowScope: z.enum(["strict-window", "application"]).optional(),
+@@ -1577,0 +1579 @@
 +	strictWindowScope: Schema.boolean().default(false),
- 	allowedApps: Schema.array(Schema.object({
- 		id: Schema.string().pattern(/^[a-f0-9]{64}$/).required(),
- 		name: Schema.string().required(),
-@@ -1643,6 +1644,7 @@
- * @param backend - Platform-owned executable, connection factory, and instructions.
- */
- function installCua(ctx, config, backend) {
+@@ -1645,0 +1648 @@
 +	ctx.provide("cuaWindowScope", Object.freeze({ version: 1, strictWindowScope: config.strictWindowScope === true }));
- 	const { helperPath } = backend;
- 	const guidance = `${backend.guidance}\n\nMaximum click holdMs: ${config.maxClickHoldMs} ms.`;
- 	const native = {
-@@ -1736,7 +1738,8 @@
- 			} : method === "getState" ? {
- 				...params,
- 				maxElements: config.maxElements,
+@@ -1739 +1742,2 @@
 -				maxDepth: config.maxDepth
 +				maxDepth: config.maxDepth,
 +				strictWindowScope: config.strictWindowScope
- 			} : method === "drag" ? {
- 				...params,
- 				durationMs: config.dragDurationMs,
-@@ -1914,3 +1917,5 @@
- function apply() {}
- //#endregion
- export { CuaAccess, CuaConfig, apply, installCua };
+@@ -1916,0 +1921,2 @@
 +
 +export const STRICT_WINDOW_SCOPE_VERSION = 1;
 --- a/lib/protocol.js
 +++ b/lib/protocol.js
-@@ -184,7 +184,8 @@
- const NativeResourceParameters = {
- 	getState: z.object({
- 		maxElements: z.number().int().min(1).max(1e4),
+@@ -187 +187,2 @@
 -		maxDepth: z.number().int().min(1).max(100)
 +		maxDepth: z.number().int().min(1).max(100),
 +		strictWindowScope: z.boolean().optional()
- 	}).strict(),
- 	drag: z.object({
- 		durationMs: z.number().int().min(1).max(5e3),
-@@ -240,6 +241,7 @@
- }));
- /** Observed state with window and process identity for stale-target rejection. */
- const StateResult = z.object({
+@@ -242,0 +244 @@
 +	windowScope: z.enum(["strict-window", "application"]).optional(),
- 	appHandle: z.string().min(1).transform((value) => value),
- 	pid,
- 	windowId: id.nullable(),
 --- a/lib/types/index.d.ts
 +++ b/lib/types/index.d.ts
-@@ -5,6 +5,8 @@
- export { CuaAccess } from './access.ts';
- /** Native executable and per-operation resource bounds. */
- export interface CuaConfig {
+@@ -7,0 +8,2 @@
 +    /** Local candidate: enforce one native window for every AX observation and indexed action. */
 +    strictWindowScope: boolean;
-     /** Register tools for Agents using this preset; defaults to ptc. False enables global registration. */
-     agentPreset: string | false;
-     /** Legacy grants imported once into profile-scoped storage; later edits are ignored. */
-@@ -125,4 +127,7 @@
- export declare function installCua(ctx: Context, config: CuaConfig, backend: CuaBackend): void;
- /** Host marker for the optional Client contribution; platform providers install native execution separately. */
- export declare function apply(): void;
--//# sourceMappingURL=index.d.ts.map+//# sourceMappingURL=index.d.ts.map
+@@ -54,0 +57 @@
++    strictWindowScope: Schema<boolean, boolean, "defined">;
+@@ -83,0 +87 @@
++    strictWindowScope: Schema<boolean, boolean, "defined">;
+@@ -128 +132,4 @@
+-//# sourceMappingURL=index.d.ts.map
+\ No newline at end of file
++//# sourceMappingURL=index.d.ts.map
 +export declare const STRICT_WINDOW_SCOPE_VERSION: 1;
 +
 +declare module "@deepseek-ai/cordis" { interface Context { cuaWindowScope: Readonly<{version: 1; strictWindowScope: boolean}>; } }
+--- a/lib/types/protocol.d.ts
++++ b/lib/types/protocol.d.ts
+@@ -265,0 +266 @@
++        strictWindowScope: z.ZodOptional<z.ZodBoolean>;
+@@ -352,0 +354 @@
++    windowScope: z.ZodOptional<z.ZodEnum<{ "strict-window": "strict-window"; application: "application" }>>;
+--- a/lib/bridge.js
++++ b/lib/bridge.js
+@@ -229,0 +230 @@
++	windowScope: z.enum(["strict-window", "application"]).optional(),

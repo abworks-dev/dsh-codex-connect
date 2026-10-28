@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "candidateVersion": "0.2.2-alpha.2.codex-cua-local.1",
+  "published": false,
+  "baseRegistryVersion": "0.2.2-alpha.2",
+  "native": {
+    "built": true,
+    "architecture": "arm64",
+    "compiler": "Apple Swift 6.4",
+    "languageMode": 6,
+    "sha256": "053a8040191bcc86a7928d85ee2970d7f03fdb19285f787bd216577619341f50",
+    "executed": false
+  },
+  "validation": {
+    "pureWindowScopeFixture": "passed; synthetic integer owners only",
+    "routeBehaviorFixtures": "4 passed on prior route kernel; current live-service marker integration pending",
+    "oldHostReserveAndCompatibility": "64 passed",
+    "currentInstalledConnectRuntime": "not yet rerun after live-service detection fix",
+    "priorInstalledConnectRuntime": "failed at Reserve before expected request/header",
+    "desktopOrLiveModels": "not executed"
+  },
+  "deployment": "not attempted; original target retained",
+  "nativeBuildPatchManifestSha256": "242e9de5cd3123d9d0b41f6cb82b9ddbe25b1f987e2fbcb10f6ee0064c5f7f0f",
+  "currentPatchManifestSha256": "33c58ff9ee43781aa920cb577e1333f79c9b9ba669335c007977ed8a113bd123",
+  "nativeBuildSourceContentMatchesCurrentManifest": true
+}
