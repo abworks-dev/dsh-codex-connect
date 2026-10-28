@@ -627,4 +627,3 @@ it('keeps the actual legacy Fast route consistent while Ultrafast is unavailable
   await waitFor(() => { expect(view.getByRole('button', { name: en.speedMenuFastTitle }).getAttribute('aria-pressed')).toBe('true') })
   expect(fetch.registry.captureSpeed('session').mode).toBe('fast')
 })
-
