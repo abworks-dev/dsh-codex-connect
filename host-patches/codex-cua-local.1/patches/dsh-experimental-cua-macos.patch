@@ -11,43 +11,48 @@
 @@ -171 +177 @@
 -    func perform(_ element: AXUIElement, _ action: String) throws {
 +    func perform(_ element: AXUIElement, _ action: String, constraint: AXWindowConstraint? = nil) throws {
-@@ -173,0 +180,4 @@
-+        if let constraint {
-+            if action == "AXShowMenu" { throw NativeFailure(code: "WINDOW_SCOPE_MISMATCH", message: "Menu actions are excluded from strict windows") }
-+            try requireWindow(element, expected: constraint.windowID, owner: constraint.owner)
-+        }
-@@ -177 +187 @@
+@@ -173,0 +180,6 @@
++        try WindowScopePolicy.checkMutation(anchor: { try self.taskWindow?.require() }, membership: {
++            if let constraint {
++                if action == "AXShowMenu" { throw NativeFailure(code: "WINDOW_SCOPE_MISMATCH", message: "Menu actions are excluded from strict windows") }
++                try self.requireWindow(element, expected: constraint.windowID, owner: constraint.owner)
++            }
++        })
+@@ -177 +189 @@
 -    func setValue(_ element: AXUIElement, _ value: String) throws {
 +    func setValue(_ element: AXUIElement, _ value: String, constraint: AXWindowConstraint? = nil) throws {
-@@ -179,0 +190 @@
-+        if let constraint { try requireWindow(element, expected: constraint.windowID, owner: constraint.owner) }
-@@ -212 +223 @@
+@@ -179,0 +192,3 @@
++        try WindowScopePolicy.checkMutation(anchor: { try self.taskWindow?.require() }, membership: {
++            if let constraint { try self.requireWindow(element, expected: constraint.windowID, owner: constraint.owner) }
++        })
+@@ -212 +227 @@
 -    func selectText(_ element: AXUIElement, text: String, prefix: String?, suffix: String?, mode: String) throws {
 +    func selectText(_ element: AXUIElement, text: String, prefix: String?, suffix: String?, mode: String, constraint: AXWindowConstraint? = nil) throws {
-@@ -224,0 +236 @@
-+        if let constraint { try requireWindow(element, expected: constraint.windowID, owner: constraint.owner) }
-@@ -339 +351,4 @@
+@@ -224,0 +240,3 @@
++        try WindowScopePolicy.checkMutation(anchor: { try self.taskWindow?.require() }, membership: {
++            if let constraint { try self.requireWindow(element, expected: constraint.windowID, owner: constraint.owner) }
++        })
+@@ -339 +357,4 @@
 -    func project(identity: ProcessIdentity, windowID requested: UInt32?, maxElements: Int, maxDepth: Int, includeMenus: Bool = false, details: Bool = false) throws -> AXProjection {
 +    func project(identity: ProcessIdentity, windowID requested: UInt32?, maxElements: Int, maxDepth: Int, includeMenus: Bool = false, details: Bool = false, strictWindowScope: Bool = false) throws -> AXProjection {
 +        if strictWindowScope && (requested == nil || includeMenus) {
 +            throw NativeFailure(code: "WINDOW_SCOPE_REQUIRED", message: "Strict AX observations require a window and exclude application menus")
 +        }
-@@ -383 +398 @@
+@@ -383 +404 @@
 -            for root in nonWindows {
 +            for root in nonWindows where !strictWindowScope {
-@@ -387 +402 @@
+@@ -387 +408 @@
 -            if !dialog { roots.append(contentsOf: anonymousSheets) }
 +            if !strictWindowScope && !dialog { roots.append(contentsOf: anonymousSheets) }
-@@ -406,0 +422,5 @@
+@@ -406,0 +428,5 @@
 +            if strictWindowScope, let requested {
 +                if role.hasPrefix("AXMenu") { return }
 +                do { try requireWindow(element, expected: requested, owner: identity) }
 +                catch let failure as NativeFailure where failure.code == "WINDOW_SCOPE_MISMATCH" || failure.code == "WINDOW_UNAVAILABLE" { return }
 +            }
-@@ -469,0 +490,21 @@
+@@ -469,0 +496,20 @@
 +    /// Live identity check shared by strict observations and every indexed action.
 +    func requireWindow(_ element: AXUIElement, expected: UInt32, owner: ProcessIdentity) throws {
-+        try taskWindow?.require()
 +        let role = try string(element, "AXRole") ?? ""
 +        do {
 +            try WindowScopePolicy.require(role: role, expected: expected) {
@@ -273,7 +278,7 @@
 +        try WindowScopePolicy.requireRoute(expected: route.strictWindowID, actual: route.windowID)
 --- a/native/Sources/CuaNative/WindowScopePolicy.swift
 +++ b/native/Sources/CuaNative/WindowScopePolicy.swift
-@@ -0,0 +1,17 @@
+@@ -0,0 +1,22 @@
 +// Local candidate: pure identity policy shared by AX observation and dispatch.
 +enum WindowScopeViolation: Error, Equatable {
 +    case menu
@@ -281,6 +286,11 @@
 +    case mismatch
 +}
 +struct WindowScopePolicy {
++    // Anchor verification may itself read AX metadata. Membership is checked last.
++    static func checkMutation(anchor: () throws -> Void, membership: () throws -> Void) rethrows {
++        try anchor()
++        try membership()
++    }
 +    // Pointer fallbacks must keep the snapshot window after AX geometry reads.
 +    static func requireRoute(expected: UInt32?, actual: UInt32) throws {
 +        if let expected, actual != expected { throw WindowScopeViolation.mismatch }

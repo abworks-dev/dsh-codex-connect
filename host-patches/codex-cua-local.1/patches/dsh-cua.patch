@@ -33,7 +33,7 @@
 +				}, props => react_jsx_runtime.jsxs(react.Fragment, {children:[react_jsx_runtime.jsx(TaskTargetPanel,{remote:ctx.remote.cuaAccess}),react_jsx_runtime.jsx(PermissionPanel,props)]})));
 --- a/lib/index.js
 +++ b/lib/index.js
-@@ -16,0 +17,85 @@
+@@ -16,0 +17,94 @@
 +/** Operator RPC only. Candidate selection never authorizes native observations or input. */
 +class TaskTargets {
 +  version = 1;
@@ -47,12 +47,20 @@
 +    if (this.closed || !root || !this.ctx.agents.roots().includes(root)) throw this.error('CUA_TARGET_OPERATOR_ROOT_REQUIRED');
 +    return root;
 +  }
-+  async close(row) {
-+    if (row.closed) return; row.closed = true;
-+    if (this.rows.get(row.root) === row) this.rows.delete(row.root);
++  close(row) {
++    if (row.closing) return row.closing;
++    row.closed = true;
 +    clearTimeout(row.timer); row.controller.abort();
-+    if (!row.claimed) await row.client.dispose();
-+    await row.release?.();
++    // Keep the invalidated row as a tombstone until native exit is confirmed.
++    // A rejected cleanup is the same rejected result for every later clear.
++    return row.closing = Promise.resolve().then(async () => {
++      if (!row.claimed) await row.client.dispose();
++      if (this.rows.get(row.root) === row) this.rows.delete(row.root);
++      const release = row.release; row.release = undefined;
++      // The root effect calls close too; detach bookkeeping only after drain,
++      // without awaiting a release that would await this same closing promise.
++      if (release) void Promise.resolve().then(release).catch(() => {});
++    });
 +  }
 +  async inOrder(root, operation) {
 +    const previous = this.serial.get(root) ?? Promise.resolve();
@@ -65,6 +73,7 @@
 +    return this.inOrder(root, async () => {
 +      this.root(sessionId);
 +      const previous = this.rows.get(root); if (previous) await this.close(previous);
++      if ([...this.rows.values()].some(row => row.closed)) throw this.error('CUA_TARGET_CLEANUP_UNCERTAIN');
 +      const row = {root, client: this.createClient(), controller: new AbortController(), expiresAt: Date.now() + 120000, selected: undefined, candidates: [], claimed: false};
 +      this.rows.set(root, row);
 +      row.timer = setTimeout(() => { void this.close(row).catch(() => {}); }, 120000);
@@ -119,11 +128,11 @@
 +  async clear(sessionId) { const root = this.root(sessionId); return this.inOrder(root, async () => { const row = this.rows.get(root); if (row) await this.close(row); }); }
 +}
 +
-@@ -550,0 +636,3 @@
+@@ -550,0 +645,3 @@
 +	tasks = /* @__PURE__ */ new Map();
 +	taskOwners = /* @__PURE__ */ new WeakMap();
 +	taskRefusals = /* @__PURE__ */ new WeakMap();
-@@ -561,0 +650,138 @@
+@@ -561,0 +659,138 @@
 +	/** Register an owned task, without granting application access. */
 +	beginTask(input) {
 +		const keys = ["parent", "child", "application", "windowId", "goal", "expiresAt", "signal"];
@@ -262,15 +271,15 @@
 +			// to ordinary saved application grants after its task has ended.
 +		});
 +	}
-@@ -569 +795 @@
+@@ -569 +804 @@
 -			await Promise.allSettled([this.options.store.drain(), ...[...this.active].map((operation) => operation.done.promise)]);
 +			await Promise.allSettled([...[...this.tasks.values()].map((task) => this.endTask(task)), this.options.store.drain(), ...[...this.active].map((operation) => operation.done.promise)]);
-@@ -647 +873,3 @@
+@@ -647 +882,3 @@
 -	async select(agent, client, handle, identity, signal, icon) {
 +	async select(agent, client, handle, identity, signal, icon, prepared) {
 +		const task = this.taskFor(agent);
 +		if (task) return this.withOperation(agent, client, identity, AbortSignal.any([signal, task.signal]), (lifetime) => this.selectInOrder(agent, identity.id, () => this.selectTask(task, client, handle, identity, prepared, lifetime, icon)));
-@@ -774,0 +1003,12 @@
+@@ -774,0 +1012,12 @@
 +		if (selected.scope === "task") {
 +			const task = this.tasks.get(selected.taskId);
 +			this.assertTask(task);
@@ -283,69 +292,69 @@
 +				return this.withOperation(state.agent, client, selected.identity, lifetime, dispatch);
 +			});
 +		}
-@@ -833,0 +1074,2 @@
+@@ -833,0 +1083,2 @@
 +		const task = this.taskFor(agent);
 +		if (task) void this.endTask(task).catch(() => {});
-@@ -864,0 +1107,4 @@
+@@ -864,0 +1116,4 @@
 +		for (const task of this.tasks.values()) if (task.identity?.id === id && (agent === void 0 || task.child.id === agent.id)) {
 +			this.taskRefusals.set(task.parent, task.userInput);
 +			void this.endTask(task).catch(() => {});
 +		}
-@@ -1088 +1334,4 @@
+@@ -1088 +1343,4 @@
 -operation("launchApp", app), operation("permissionStatus", {}), operation("applicationIcons", { paths: z.array(z.string().min(1)) }), operation("requestPermission", { permission: z.enum(["accessibility", "screenRecording"]) }), operation("openPermissionSettings", { permission: z.enum(["accessibility", "screenRecording"]) });
 +operation("prepareTaskWindows", app),
 +    operation("bindTaskWindow", {...app, windowId:id, targetKey:z.string().min(1)}),
 +    operation("validateTaskWindow", {...app, windowId:id}),
 +    operation("launchApp", app), operation("permissionStatus", {}), operation("applicationIcons", { paths: z.array(z.string().min(1)) }), operation("requestPermission", { permission: z.enum(["accessibility", "screenRecording"]) }), operation("openPermissionSettings", { permission: z.enum(["accessibility", "screenRecording"]) });
-@@ -1120,0 +1370 @@
+@@ -1120,0 +1379 @@
 +	windowScope: z.enum(["strict-window", "application"]).optional(),
-@@ -1258,0 +1509 @@
+@@ -1258,0 +1518 @@
 +            for (const name of ["discoverTaskTargets", "selectTaskTarget", "clearTaskTargets"]) __esDecorate(this, null, [Remote], { kind: "method", name, static: false, private: false, access: { has: obj => name in obj, get: obj => obj[name] }, metadata: _metadata }, null, _instanceExtraInitializers);
-@@ -1379,0 +1631,4 @@
+@@ -1379,0 +1640,4 @@
 +        assertTargetOperator() { if (this.ctx.invocation?.peer.principal.kind !== "owner") throw new NativeError("CUA_TARGET_OPERATOR_REQUIRED", "Target discovery is restricted to the authenticated local operator"); }
 +        discoverTaskTargets(sessionId, application) { this.assertTargetOperator(); return this.ctx.cuaTaskTargets.discover(sessionId, application); }
 +        selectTaskTarget(sessionId, candidateId) { this.assertTargetOperator(); return this.ctx.cuaTaskTargets.select(sessionId, candidateId); }
 +        clearTaskTargets(sessionId) { this.assertTargetOperator(); return this.ctx.cuaTaskTargets.clear(sessionId); }
-@@ -1486,0 +1742,4 @@
+@@ -1486,0 +1751,4 @@
 +		beginTask: policy.beginTask.bind(policy),
 +		taskFor: policy.taskFor.bind(policy),
 +		checkTaskRequest: policy.checkTaskRequest.bind(policy),
 +		observeTask: policy.observeTask.bind(policy),
-@@ -1577,0 +1837 @@
+@@ -1577,0 +1846 @@
 +	strictWindowScope: Schema.boolean().default(false),
-@@ -1645,0 +1906 @@
+@@ -1645,0 +1915 @@
 +	ctx.provide("cuaWindowScope", Object.freeze({ version: 1, strictWindowScope: config.strictWindowScope === true }));
-@@ -1668,0 +1930,2 @@
+@@ -1668,0 +1939,2 @@
 +    if (config.strictWindowScope === true) ctx.provide("cuaTaskTargets", new TaskTargets(ctx, () => new NativeClient(ctx, native, backend.createChannel), code => new NativeError(code, "Operator target selection is missing, stale or invalid")));
 +	if (config.strictWindowScope === true) ctx.provide("cuaTaskApproval", Object.freeze({ version: 1, begin: (input) => access.beginTask(input) }));
-@@ -1720,0 +1984 @@
+@@ -1720,0 +1993 @@
 +			access.checkTaskRequest(execution.agent, request);
-@@ -1739 +2003,2 @@
+@@ -1739 +2012,2 @@
 -				maxDepth: config.maxDepth
 +				maxDepth: config.maxDepth,
 +				strictWindowScope: config.strictWindowScope
-@@ -1748,0 +2014 @@
+@@ -1748,0 +2023 @@
 +				access.observeTask(agent, request, screenshot);
-@@ -1781 +2047 @@
+@@ -1781 +2056 @@
 -				await access.select(agent, client, prepared.appHandle, authorization, signal, applicationIcon);
 +				await access.select(agent, client, prepared.appHandle, authorization, signal, applicationIcon, prepared);
-@@ -1793,0 +2060 @@
+@@ -1793,0 +2069 @@
 +				access.observeTask(agent, request, state);
-@@ -1813,0 +2081 @@
+@@ -1813,0 +2090 @@
 +				access.checkTaskRequest(agent, request);
-@@ -1820 +2088,2 @@
+@@ -1820 +2097,2 @@
 -					owner.signal
 +					owner.signal,
 +					...access.taskFor(agent) ? [access.taskFor(agent).signal] : []
-@@ -1827 +2096,2 @@
+@@ -1827 +2105,2 @@
 -					let client = clients.get(agent);
 +                    let client = clients.get(agent) ?? access.taskFor(agent)?.nativeClient;
 +                    if (client && !clients.has(agent)) { clients.set(agent, client); owner.coordinates = new CuaCoordinates(); }
-@@ -1828,0 +2099 @@
+@@ -1828,0 +2108 @@
 +					if (access.taskFor(agent)?.nativeClient?.disposed) throw new NativeError("CUA_TASK_CLOSED", "Selected native target connection expired");
-@@ -1836,0 +2108 @@
+@@ -1836,0 +2117 @@
 +					access.taskFor(agent)?.clients.add(nativeClient);
-@@ -1916,0 +2189,2 @@
+@@ -1916,0 +2198,2 @@
 +
 +export const STRICT_WINDOW_SCOPE_VERSION = 1;
 --- a/lib/protocol.js

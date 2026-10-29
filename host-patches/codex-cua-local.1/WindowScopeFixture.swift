@@ -30,6 +30,15 @@
         do { try WindowScopePolicy.requireRoute(expected: 7, actual: 9); fatalError("pointer fallback changed window") }
         catch WindowScopeViolation.mismatch { }
         precondition(dispatches == 2)
+        var changesDuringAnchor: UInt32? = 7
+        do {
+            try WindowScopePolicy.checkMutation(anchor: { changesDuringAnchor = 9 }, membership: {
+                try WindowScopePolicy.require(role: "AXTextField", expected: 7) { changesDuringAnchor }
+            })
+            dispatches += 1
+            fatalError("element reparented during anchor reads was admitted")
+        } catch WindowScopeViolation.mismatch { }
+        precondition(dispatches == 2)
         print("WindowScopeFixture: menu/foreign/unknown/reparent rejected; target form/button controls admitted")
     }
 }

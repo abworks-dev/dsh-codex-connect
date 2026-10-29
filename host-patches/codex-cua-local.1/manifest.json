@@ -48,7 +48,7 @@
     "@deepseek-ai/dsh-cua": {
       "baseIntegrity": "sha512-yceImk1O0NkKTdwe8IQYX9SPmsulcJD7LtmPm7oJXunY2+4HQkJNA3qOSk5zJyr1NpWffnRdUcJvTIDgIMGOSA==",
       "patch": "patches/dsh-cua.patch",
-      "patchSha256": "6a08d0cf5be29cd7c53da2f93b3c5fc68ed8c6a3a7fd0588cbeab9fab82ef415",
+      "patchSha256": "d4245e3bb5b04db66d84b9bd994094fdd6499507553f714b2c3a26beca64ad32",
       "files": [
         {
           "path": "lib/bridge.js",
@@ -63,7 +63,7 @@
         {
           "path": "lib/index.js",
           "baseSha256": "e62f507fa5471f2797eb9d4f0d22f10f5edb3d49d05f2be2ea7ae6024485b2b2",
-          "patchedSha256": "05855ff88585cc2926007c2c152726a0bcfd3ec40e6d263bebe6ee681e8add78"
+          "patchedSha256": "84dde49ce9f3af7d20074faa4ca15a29c04f7c4c62b3c1ffd5aa2d5bfbd28a72"
         },
         {
           "path": "lib/protocol.js",
@@ -105,12 +105,12 @@
     "@deepseek-ai/dsh-experimental-cua-macos": {
       "baseIntegrity": "sha512-rHYMMIYahSn1qxntUDYYsVd5jjf5Z7svdKjHgRyaJ2JoQWgNJc26Zzgr5uTQ9IL3BkOXoj7llTOBdZMR/uKH+w==",
       "patch": "patches/dsh-experimental-cua-macos.patch",
-      "patchSha256": "27de919972e504f63c72eddcd2fb0a306ef47f725bf58f23e91491072845fa2c",
+      "patchSha256": "99d1e5b6df9018841d4cca2e32807fd50ba2ed9e53337bcedd27ea710a5ef396",
       "files": [
         {
           "path": "native/Sources/CuaNative/AXAccess.swift",
           "baseSha256": "92036dfea0676d4c8c5ef4957ddda0bd936739b01554613f7e9fd1ee19c0aba6",
-          "patchedSha256": "0c36338e085a7b60f89b41dae3784cb43a44580dbe3e041b31687a87fe94564e"
+          "patchedSha256": "26c9a8b15ce54f9497a64a1588da5f7933e45950aa1c02f195d6c30cf7261774"
         },
         {
           "path": "native/Sources/CuaNative/AXHover.swift",
@@ -145,7 +145,7 @@
         {
           "path": "native/Sources/CuaNative/WindowScopePolicy.swift",
           "baseSha256": null,
-          "patchedSha256": "8b0b1b73c2a5414a2954c3141689b0bb620deaa24b6e03cb7eb822e98797a9ff"
+          "patchedSha256": "33379b381ba1d94b19b8ca82e5482b68385fffc48ef7a0f1c3026f79d3d8fe09"
         },
         {
           "path": "native/protocol.schema.json",

@@ -33,25 +33,26 @@
   "wholePublishedPackagesVerified": 321,
   "local3": {
     "candidateVersion": "0.2.2-alpha.2.codex-cua-local.3",
-    "sourceManifestSha256": "b7fb4ee549e3e66effdde23610c256da6aa4311c4434e29ab4c13d702b16dea5",
+    "sourceManifestSha256": "dc44343260cf9fa89dde7168d392df4a1c873916cb9e47cc518ba9ef2388d9bd",
     "wholePublishedPackagesVerified": 321,
     "native": {
       "built": true,
       "architecture": "arm64",
       "compiler": "Apple Swift 6.4",
       "languageMode": 6,
-      "sha256": "d7a96a8aef6879c9a8ad032b236310181ef724617131ee97ad0a05069322f426",
+      "sha256": "837341c98065282f3c4183f43df9d5cd74561ee43f015da50d9cc8156d5f2ccf",
       "executed": false,
-      "scope": "local.3 window-object identity and dispatch source; compiled only; reused only after every Swift source byte matched"
+      "scope": "final local.3 source compiled directly; anchor checks precede final per-element membership at mutation sinks; helper not executed"
     },
     "validation": {
-      "sourceCheck": "passed; 2384 tests passed, 2 skipped; typecheck, lint, build and package checks passed",
-      "hostComposition": "48 passed on actual Host modules with scripted model/native/human answers; native-only metadata continuations rejected by the model Request schema",
+      "sourceCheck": "reviewed cleanup/sink tree: complete check passed; 2384 tests passed,2skipped; lint/typecheck/build/72-file package checks passed",
+      "hostComposition": "50 actual-Host tests passed using scripted model/native/human fixtures; includes repeated failed clear+real backend/UI integration and actual strict Gateway owner/non-owner admission",
       "compatibility": "45 passed; exact local.3 added without admitting mixed or future peers",
       "sourceProvenance": "2 pure tests passed; final candidate builder compared all 321 complete original packages to verified locked tarballs",
-      "browser": "97 passed in 14 files with isolated Playwright headless browser; initial absent-browser failure preserved",
-      "installedCandidate": "231bcd5 candidate17: 49 actual-Host/plugin cases and4route cases passed; full installed Connect profile runtime passed. Final native-only protocol contract follow-up candidate18 recheck pending; no live model/GUI acceptance",
-      "remoteCiAndIndependentFinalReview": "pending exact commit"
+      "browser": "reviewed tree:97passed in14files with isolated Playwright; initial missing-browser failure preserved",
+      "installedCandidate": "231bcd5 candidate17 full isolated installed-profile regression passed; final reviewed candidate20 exact-runtime recheck pending; no live acceptance",
+      "remoteCiAndIndependentFinalReview": "pending exact commit",
+      "pureWindowScopeFixture": "production policy fixture passed including reparenting during anchor metadata reads; no AX objects or native helper"
     },
     "desktopAndLiveHumanConsent": "not executed; no application/OS grant, model request, GUI observation/input, service change or parity claim"
   }

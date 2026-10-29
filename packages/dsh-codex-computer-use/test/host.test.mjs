@@ -951,3 +951,72 @@ test('metadata continuations are declared native-only and rejected as model CUA 
  }
  assert.equal(f.nativeRequests.length,0)
 })
+
+test('uncertain native target cleanup stays rejected across repeated clear and blocks discovery',async t=>{
+ const f=await fixture({officialCua:true,strict:true,nativeResponse:targetNative})
+ if(!f.ctx.get('cuaTaskTargets')){t.skip('requires local.3');return}
+ await selectOperatorTarget(f)
+ const row=f.ctx.cuaTaskTargets.rows.get(f.parent.agent),dispose=row.client.dispose.bind(row.client)
+ let calls=0
+ row.client.dispose=async()=>{calls++;throw Error('close uncertain')}
+ try{
+  await assert.rejects(operatorFace(f).clearTaskTargets(f.parent.agent.id),/close uncertain/)
+  assert.equal(row.closed,true)
+  assert.equal(f.ctx.cuaTaskTargets.rows.get(f.parent.agent),row)
+  const first=row.closing
+  await assert.rejects(operatorFace(f).clearTaskTargets(f.parent.agent.id),/close uncertain/)
+  assert.equal(row.closing,first)
+  const before=f.nativeRequests.length
+  await assert.rejects(operatorFace(f).discoverTaskTargets(f.parent.agent.id,target.application),/close uncertain/)
+  assert.equal(f.nativeRequests.length,before)
+  assert.equal(calls,1,'no duplicate cleanup or new native connection')
+  const other=await f.ctx.agents.create({sessionId:SessionId(crypto.randomUUID()),agentOptions:{provider:'deepseek',model:'flash'}})
+  owned.push(()=>other.dispose())
+  await assert.rejects(operatorFace(f).discoverTaskTargets(other.agent.id,target.application),/CUA_TARGET_CLEANUP_UNCERTAIN/)
+  assert.equal(f.nativeRequests.length,before)
+  // Connect the real backend failure to the packaged UI, including a second clear.
+  const require=createRequire(import.meta.url),base=pathToFileURL(require.resolve('@deepseek-ai/dsh-cua/package.json'))
+  const source=await readFile(new URL('lib/client.js',base),'utf8')
+  const start=source.indexOf('function TaskTargetPanel('),end=source.indexOf('function PermissionPanel(',start)
+  const state=[f.parent.agent.id,target.application,[],'Selected window7',false,true];let index=0
+  const react={useState:()=>{const key=index++;return[state[key],value=>{state[key]=value}]}}
+  const jsx=(type,props)=>({type,...props})
+  const panel=new Function('react','react_jsx_runtime',source.slice(start,end)+';return TaskTargetPanel;')(react,{jsx,jsxs:jsx})
+  const view=panel({remote:{clearTaskTargets:async()=>{try{await operatorFace(f).clearTaskTargets(f.parent.agent.id);return{ok:true,value:undefined}}catch(error){return{ok:false,error}}}}})
+  const clear=view.children.find(child=>child?.type==='button'&&child.children==='Clear selection')
+  for(let attempt=0;attempt<2;attempt++){await clear.onClick();assert.equal(state[5],true);assert.match(state[3],/failed or is uncertain/);assert.equal(calls,1)}
+
+  assert.throws(()=>f.ctx.cuaTaskTargets.target(f.parent.agent),/CUA_TARGET_CLOSED/)
+  assert.deepEqual((await f.ctx.cuaAccess.applications()).allowedApps,[])
+ }finally{row.client.dispose=dispose;await dispose()}
+})
+
+test('actual strict Gateway admits owner selection and rejects a policy-allowed non-owner',async t=>{
+ const f=await fixture({officialCua:true,strict:true,nativeResponse:targetNative,config:{application:'',windowId:0},script:selectedTaskScript(),humanAnswer:allowTask})
+ if(!f.ctx.get('cuaTaskTargets')){t.skip('requires local.3');return}
+ const require=createRequire(import.meta.url)
+ const {default:Registry}=await import(pathToFileURL(require.resolve('@deepseek-ai/dsh-typert-registry')))
+ const {default:Gateway}=await import(pathToFileURL(require.resolve('@deepseek-ai/dsh-api-gateway')))
+ const {TYPERT}=await import(pathToFileURL(require.resolve('@deepseek-ai/dsh-cua/typert')))
+ await f.ctx.plugin(Registry)
+ f.ctx.typert.register(TYPERT)
+ let policyCalls=0
+ f.ctx.provide('remoteAccess',{decide(){policyCalls++;return{kind:'allow'}}})
+ await f.ctx.plugin(Gateway,Gateway.Config({}))
+ const peer=kind=>({id:kind,principal:{kind},signal:new AbortController().signal})
+ const args={sessionId:f.parent.agent.id,application:target.application}
+ const denied=await f.ctx.typertGateway.invokeRpc('cuaAccess/discoverTaskTargets',{args},undefined,peer('liveshare'))
+ assert.equal(policyCalls,1,'gateway policy intentionally permits this endpoint')
+ assert.equal(denied.ok,false)
+ assert.match(JSON.stringify(denied),/CUA_TARGET_OPERATOR_REQUIRED/)
+ assert.equal(f.nativeRequests.length,0)
+ const found=await f.ctx.typertGateway.invokeRpc('cuaAccess/discoverTaskTargets',{args},undefined,peer('owner'))
+ assert.equal(found.ok,true,JSON.stringify(found))
+ const chosen=await f.ctx.typertGateway.invokeRpc('cuaAccess/selectTaskTarget',{args:{sessionId:f.parent.agent.id,candidateId:found.value.targets[0].id}},undefined,peer('owner'))
+ assert.equal(chosen.ok,true,JSON.stringify(chosen))
+ assert.equal(f.questions.length,0)
+ const outcome=(await f.execute()).results[0].result.value
+ assert.equal(outcome.status,'completed',JSON.stringify(outcome))
+ assert.equal(f.questions.length,1)
+ assert.deepEqual((await f.ctx.cuaAccess.applications()).allowedApps,[])
+})
