@@ -1,7 +1,9 @@
 /** Real published Host loop and Native pipeline, scripted in-memory provider/CUA. No network or GUI. */
 import { afterEach, test } from 'node:test'
+import { createRequire } from 'node:module'
+import { pathToFileURL } from 'node:url'
 import assert from 'node:assert/strict'
-import { mkdtemp, rm, unlink } from 'node:fs/promises'
+import { mkdtemp, rm, unlink, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { PassThrough, Writable } from 'node:stream'
@@ -769,4 +771,170 @@ test('lease loss aborts an in-flight native operation and returns blocked', { ti
   const batch = await running
   assert.equal(drained, true)
   assert.equal(batch.results[0].result.value.reason, 'desktop_lease_lost')
+})
+
+const operatorFace = f => f.ctx.extend({invocation:{peer:{principal:{kind:'owner'}}}}).get('cuaAccess')
+
+// First-use operator route. Native metadata/results remain synthetic; this is not GUI acceptance.
+const selectedTaskScript = () => taskScript().map((block, index) => index === 0
+  ? call('cua', {method:'getApp',params:{selector:'1234'}}) : block)
+function targetNative(request) {
+  if (request.method === 'getApp') return {appHandle:'app-fixture',pid:1234,name:target.application,authorization:{id:'a'.repeat(64),name:target.application,persistable:false}}
+  if (request.method === 'prepareTaskWindows') return [{windowId:7,pid:1234,appName:target.application,title:'Synthetic fixture',bounds:{x:0,y:0,width:100,height:100},isOnScreen:true,onCurrentSpace:true,targetKey:'native-opaque-candidate'}]
+  if (request.method === 'getState') return {appHandle:'app-fixture',pid:1234,windowId:7,snapshotId:'strict-fixture',windowScope:'strict-window',tree:'Synthetic button',windows:[{windowId:7,pid:1234,appName:target.application,title:'Synthetic fixture',bounds:{x:0,y:0,width:100,height:100},isOnScreen:true,onCurrentSpace:true}],truncated:false}
+  return {validated:true}
+}
+async function selectOperatorTarget(f) {
+  const found = await operatorFace(f).discoverTaskTargets(f.parent.agent.id, target.application)
+  assert.equal(found.targets.length,1)
+  assert.equal('appHandle' in found.targets[0],false)
+  assert.equal('targetKey' in found.targets[0],false)
+  await operatorFace(f).selectTaskTarget(f.parent.agent.id,found.targets[0].id)
+  return found
+}
+
+test('first use without grant/window ID selects metadata then requires the true root task answer', async t => {
+  let f
+  f = await fixture({officialCua:true,strict:true,config:{application:'',windowId:0},nativeResponse:targetNative,script:selectedTaskScript(),humanAnswer:request=>{
+    assert.equal(request.agent,f.parent.agent)
+    assert.equal(f.nativeRequests.some(r=>['getState','screenshot','click','setValue'].includes(r.method)),false)
+    assert.match(request.questions[0].detail,/Window: 7/)
+    return allowTask()
+  }})
+  if (!f.ctx.get('cuaTaskTargets')) {t.skip('requires local.3 operator target capability');return}
+  assert.equal((await f.execute()).results[0].result.value.reason,'operator_target_required')
+  assert.equal(f.seen.length,0)
+  await selectOperatorTarget(f)
+  assert.deepEqual(f.nativeRequests.map(r=>r.method),['getApp','prepareTaskWindows','bindTaskWindow'])
+  assert.deepEqual((await f.ctx.cuaAccess.applications()).allowedApps,[])
+  assert.equal(f.questions.length,0)
+  const value = (await f.execute()).results[0].result.value
+  assert.equal(value.status,'completed',JSON.stringify(value))
+  assert.equal(value.cleanup,'drained')
+  assert.equal(f.questions.length,1)
+  assert.equal(f.nativeRequests.filter(r=>r.method==='validateTaskWindow').length,2)
+  assert.deepEqual((await f.ctx.cuaAccess.applications()).allowedApps,[])
+  assert.deepEqual(f.parent.agent.model.current(),{provider:'deepseek',model:'flash'})
+  assert.equal(f.ctx.cuaTaskTargets.target(f.parent.agent),undefined,'selection consumed exactly once')
+  assert.equal((await f.execute()).results[0].result.value.reason,'operator_target_required')
+})
+
+test('operator discovery refuses missing/child roots and is absent from every model CUA schema', async t=>{
+  const f=await fixture({officialCua:true,strict:true,nativeResponse:targetNative})
+  if(!f.ctx.get('cuaTaskTargets')){t.skip('requires local.3');return}
+  assert.throws(()=>f.ctx.cuaAccess.discoverTaskTargets(f.parent.agent.id,target.application),/CUA_TARGET_OPERATOR_REQUIRED/)
+  const nonOwner=f.ctx.extend({invocation:{peer:{principal:{kind:'liveshare'}}}}).get('cuaAccess')
+  assert.throws(()=>nonOwner.discoverTaskTargets(f.parent.agent.id,target.application),/CUA_TARGET_OPERATOR_REQUIRED/)
+  assert.throws(()=>nonOwner.selectTaskTarget(f.parent.agent.id,'candidate'),/CUA_TARGET_OPERATOR_REQUIRED/)
+  assert.throws(()=>nonOwner.clearTaskTargets(f.parent.agent.id),/CUA_TARGET_OPERATOR_REQUIRED/)
+  await assert.rejects(operatorFace(f).discoverTaskTargets('not-a-root',target.application),/CUA_TARGET_OPERATOR_ROOT_REQUIRED/)
+  const child=await f.ctx.agents.create({sessionId:SessionId(crypto.randomUUID()),parentAgent:f.parent.agent,meta:{origin:'subagent',parentSession:f.parent.agent.id}})
+  owned.push(()=>child.dispose())
+  await assert.rejects(operatorFace(f).discoverTaskTargets(child.agent.id,target.application),/CUA_TARGET_OPERATOR_ROOT_REQUIRED/)
+  assert.equal(f.nativeRequests.length,0)
+  const cua=f.ctx.tools.get('cua',child.agent)
+  if(cua)for(const method of ['prepareTaskWindows','bindTaskWindow','validateTaskWindow']) assert.equal(JSON.stringify(cua.parameters).includes('"const":"'+method+'"'),false)
+  assert.equal(f.ctx.tools.get('discoverTaskTargets',f.parent.agent),undefined)
+})
+
+test('no matching window, wrong candidate, expired selection and explicit clear cannot authorize work', async t=>{
+  const f=await fixture({officialCua:true,strict:true,config:{application:'',windowId:0},nativeResponse:r=>r.method==='prepareTaskWindows'?[]:targetNative(r)})
+  if(!f.ctx.get('cuaTaskTargets')){t.skip('requires local.3');return}
+  const found=await operatorFace(f).discoverTaskTargets(f.parent.agent.id,target.application)
+  assert.deepEqual(found.targets,[])
+  await assert.rejects(operatorFace(f).selectTaskTarget(f.parent.agent.id,'forged'),/CUA_TARGET_NOT_FOUND/)
+  assert.equal((await f.execute()).results[0].result.value.reason,'operator_target_required')
+  assert.equal(f.seen.length,0)
+  await operatorFace(f).clearTaskTargets(f.parent.agent.id)
+  assert.equal(f.ctx.cuaTaskTargets.rows.size,0)
+  assert.deepEqual((await f.ctx.cuaAccess.applications()).allowedApps,[])
+  const g=await fixture({officialCua:true,strict:true,config:{application:'',windowId:0},nativeResponse:targetNative})
+  await selectOperatorTarget(g)
+  g.ctx.cuaTaskTargets.rows.get(g.parent.agent).expiresAt=Date.now()-1
+  assert.equal((await g.execute()).results[0].result.value.reason,'operator_target_required')
+  assert.equal(g.seen.length,0)
+  await operatorFace(g).clearTaskTargets(g.parent.agent.id)
+  assert.equal(g.ctx.cuaTaskTargets.rows.size,0)
+})
+
+test('stale window before or after the human answer and human denial leave no reusable target/grant', async t=>{
+  for(const failureAt of ['bind','before-answer','after-answer','deny']){
+    let validations=0
+    const f=await fixture({officialCua:true,strict:true,config:{application:'',windowId:0},script:selectedTaskScript(),humanAnswer:()=>failureAt==='deny'?{answers:[{id:'cua-task-access',selected:['Deny']}]}:allowTask(),nativeResponse:r=>{
+      if(r.method==='bindTaskWindow'&&failureAt==='bind'||r.method==='validateTaskWindow'&&++validations===(failureAt==='before-answer'?1:failureAt==='after-answer'?2:-1)) throw Error('CUA_TARGET_STALE')
+      return targetNative(r)
+    }})
+    if(!f.ctx.get('cuaTaskTargets')){t.skip('requires local.3');return}
+    if(failureAt==='bind'){
+      await assert.rejects(selectOperatorTarget(f),/NATIVE/)
+      assert.equal(f.ctx.cuaTaskTargets.rows.size,0)
+    }else{
+      await selectOperatorTarget(f)
+      const result=(await f.execute()).results[0].result.value
+      assert.equal(result.status,'blocked',JSON.stringify(result))
+      assert.equal(result.cleanup,'drained')
+    }
+    assert.equal(f.nativeRequests.some(r=>['getState','setValue','screenshot','click'].includes(r.method)),false)
+    assert.deepEqual((await f.ctx.cuaAccess.applications()).allowedApps,[])
+    assert.equal(f.ctx.cuaTaskTargets.target(f.parent.agent),undefined)
+    assert.equal((await f.execute()).results[0].result.value.reason,'operator_target_required')
+  }
+})
+
+
+test('generated owner RPC contract parses exact arguments and rejects non-owner after admission', async t=>{
+  const f=await fixture({officialCua:true,strict:true,nativeResponse:targetNative})
+  if(!f.ctx.get('cuaTaskTargets')){t.skip('requires local.3');return}
+  const require=createRequire(import.meta.url)
+  const base=pathToFileURL(require.resolve('@deepseek-ai/dsh-cua/package.json'))
+  const {TYPERT}=await import(new URL('lib/typert.host.js',base))
+  const {TYPERT_REMOTE}=await import(new URL('lib/typert.remote-client.js',base))
+  const descriptor=TYPERT.invocations.find(d=>d.method==='discoverTaskTargets')
+  const args={sessionId:f.parent.agent.id,application:target.application}
+  assert.deepEqual(descriptor.input({strict:true}).create().parse(args),args)
+  assert.throws(()=>descriptor.input({strict:true}).create().parse({...args,principal:{kind:'owner'}}))
+  assert.deepEqual(TYPERT_REMOTE.methods['cuaAccess/discoverTaskTargets'].input({strict:true}).create().parse(args),args)
+  const nonOwner=f.ctx.extend({invocation:{peer:{principal:{kind:'liveshare'}}}})
+  assert.throws(()=>descriptor.invoke(nonOwner,args),/CUA_TARGET_OPERATOR_REQUIRED/)
+  assert.equal(f.nativeRequests.length,0)
+  const owner=f.ctx.extend({invocation:{peer:{principal:{kind:'owner'}}}})
+  const result=await descriptor.invoke(owner,args)
+  assert.equal(result.targets.length,1)
+  await operatorFace(f).clearTaskTargets(f.parent.agent.id)
+})
+
+test('cancelling selected first-use work drains its private target connection and leaves no selection',async t=>{
+  let entered
+  const waiting=new Promise(resolve=>{entered=resolve})
+  const f=await fixture({officialCua:true,strict:true,config:{application:'',windowId:0},script:selectedTaskScript(),nativeResponse:targetNative,humanAnswer:request=>{entered();return new Promise((_resolve,reject)=>request.signal.addEventListener('abort',()=>reject(Error('cancelled')),{once:true}))}})
+  if(!f.ctx.get('cuaTaskTargets')){t.skip('requires local.3');return}
+  await selectOperatorTarget(f)
+  const running=f.execute();await waiting;f.controller.abort();await running
+  assert.equal(f.ctx.cuaTaskTargets.target(f.parent.agent),undefined)
+  assert.deepEqual((await f.ctx.cuaAccess.applications()).allowedApps,[])
+  assert.equal(f.nativeRequests.some(r=>['getState','screenshot','click','setValue'].includes(r.method)),false)
+  const lease=await acquireDesktopLease(f.directory);lease.release(true)
+})
+
+
+for(const ok of [false,true])test(`operator UI clear confirms success before unlocking selection (RPC ok=${ok})`,async t=>{
+  const f=await fixture({officialCua:true,strict:true})
+  if(!f.ctx.get('cuaTaskTargets')){t.skip('requires local.3');return}
+  const require=createRequire(import.meta.url)
+  const base=pathToFileURL(require.resolve('@deepseek-ai/dsh-cua/package.json'))
+  const source=await readFile(new URL('lib/client.js',base),'utf8')
+  const start=source.indexOf('function TaskTargetPanel('),end=source.indexOf('function PermissionPanel(',start)
+  assert.ok(start>=0&&end>start)
+  const state=['root','Synthetic Browser',[],'Selected window 7',false,true]
+  let index=0
+  const react={useState:()=>{const key=index++;return[state[key],value=>{state[key]=value}]}}
+  const jsx=(type,props)=>({type,...props})
+  // Render only the trusted packaged component with inert JSX/state and a synthetic RPC.
+  const component=new Function('react','react_jsx_runtime',source.slice(start,end)+';return TaskTargetPanel;')(react,{jsx,jsxs:jsx})
+  const view=component({remote:{clearTaskTargets:async()=>ok?{ok:true,value:undefined}:{ok:false,error:Error('reply lost')}}})
+  const clear=view.children.find(child=>child?.type==='button'&&child.children==='Clear selection')
+  await clear.onClick()
+  assert.equal(state[5],!ok)
+  if(ok)assert.match(state[3],/^Selection cleared/)
+  else {assert.match(state[3],/failed or is uncertain/);assert.doesNotMatch(state[3],/^Selection cleared/)}
 })

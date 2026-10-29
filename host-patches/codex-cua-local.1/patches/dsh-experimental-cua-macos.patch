@@ -1,50 +1,53 @@
 --- a/native/Sources/CuaNative/AXAccess.swift
 +++ b/native/Sources/CuaNative/AXAccess.swift
-@@ -7,0 +8,5 @@
+@@ -6,0 +7,5 @@
++
 +struct AXWindowConstraint {
 +    let owner: ProcessIdentity
 +    let windowID: UInt32
 +}
-+
-@@ -171 +176 @@
+@@ -21,0 +27 @@
++    var taskWindow: NativeTaskWindow?
+@@ -171 +177 @@
 -    func perform(_ element: AXUIElement, _ action: String) throws {
 +    func perform(_ element: AXUIElement, _ action: String, constraint: AXWindowConstraint? = nil) throws {
-@@ -173,0 +179,4 @@
+@@ -173,0 +180,4 @@
 +        if let constraint {
 +            if action == "AXShowMenu" { throw NativeFailure(code: "WINDOW_SCOPE_MISMATCH", message: "Menu actions are excluded from strict windows") }
 +            try requireWindow(element, expected: constraint.windowID, owner: constraint.owner)
 +        }
-@@ -177 +186 @@
+@@ -177 +187 @@
 -    func setValue(_ element: AXUIElement, _ value: String) throws {
 +    func setValue(_ element: AXUIElement, _ value: String, constraint: AXWindowConstraint? = nil) throws {
-@@ -179,0 +189 @@
+@@ -179,0 +190 @@
 +        if let constraint { try requireWindow(element, expected: constraint.windowID, owner: constraint.owner) }
-@@ -212 +222 @@
+@@ -212 +223 @@
 -    func selectText(_ element: AXUIElement, text: String, prefix: String?, suffix: String?, mode: String) throws {
 +    func selectText(_ element: AXUIElement, text: String, prefix: String?, suffix: String?, mode: String, constraint: AXWindowConstraint? = nil) throws {
-@@ -224,0 +235 @@
+@@ -224,0 +236 @@
 +        if let constraint { try requireWindow(element, expected: constraint.windowID, owner: constraint.owner) }
-@@ -339 +350,4 @@
+@@ -339 +351,4 @@
 -    func project(identity: ProcessIdentity, windowID requested: UInt32?, maxElements: Int, maxDepth: Int, includeMenus: Bool = false, details: Bool = false) throws -> AXProjection {
 +    func project(identity: ProcessIdentity, windowID requested: UInt32?, maxElements: Int, maxDepth: Int, includeMenus: Bool = false, details: Bool = false, strictWindowScope: Bool = false) throws -> AXProjection {
 +        if strictWindowScope && (requested == nil || includeMenus) {
 +            throw NativeFailure(code: "WINDOW_SCOPE_REQUIRED", message: "Strict AX observations require a window and exclude application menus")
 +        }
-@@ -383 +397 @@
+@@ -383 +398 @@
 -            for root in nonWindows {
 +            for root in nonWindows where !strictWindowScope {
-@@ -387 +401 @@
+@@ -387 +402 @@
 -            if !dialog { roots.append(contentsOf: anonymousSheets) }
 +            if !strictWindowScope && !dialog { roots.append(contentsOf: anonymousSheets) }
-@@ -406,0 +421,5 @@
+@@ -406,0 +422,5 @@
 +            if strictWindowScope, let requested {
 +                if role.hasPrefix("AXMenu") { return }
 +                do { try requireWindow(element, expected: requested, owner: identity) }
 +                catch let failure as NativeFailure where failure.code == "WINDOW_SCOPE_MISMATCH" || failure.code == "WINDOW_UNAVAILABLE" { return }
 +            }
-@@ -469,0 +489,20 @@
+@@ -469,0 +490,21 @@
 +    /// Live identity check shared by strict observations and every indexed action.
 +    func requireWindow(_ element: AXUIElement, expected: UInt32, owner: ProcessIdentity) throws {
++        try taskWindow?.require()
 +        let role = try string(element, "AXRole") ?? ""
 +        do {
 +            try WindowScopePolicy.require(role: role, expected: expected) {
@@ -63,11 +66,26 @@
 +        }
 +    }
 +
+--- a/native/Sources/CuaNative/AXHover.swift
++++ b/native/Sources/CuaNative/AXHover.swift
+@@ -8,0 +9,2 @@
++        try WindowScopePolicy.requireRoute(expected: route.strictWindowID, actual: route.windowID)
++        let constraint = route.strictWindowID.map { AXWindowConstraint(owner: route.owner, windowID: $0) }
+@@ -27 +29 @@
+-            try access.perform(revealed.element, "AXShowDefaultUI")
++            try access.perform(revealed.element, "AXShowDefaultUI", constraint: constraint)
+@@ -31 +33 @@
+-            try access.perform(alternate, "AXShowAlternateUI")
++            try access.perform(alternate, "AXShowAlternateUI", constraint: constraint)
 --- a/native/Sources/CuaNative/AXWorker.swift
 +++ b/native/Sources/CuaNative/AXWorker.swift
 @@ -20,0 +21 @@
 +    var strictWindowScope: Bool = false
-@@ -149,0 +151,8 @@
+@@ -87,0 +89,3 @@
++    private var taskCandidates: [String: NativeTaskWindow] = [:]
++    private var taskWindow: NativeTaskWindow?
++    private var taskHandle: String?
+@@ -149,0 +154,8 @@
 +    private func constraint(_ value: NativeSnapshot, handle: String) throws -> AXWindowConstraint? {
 +        guard value.strictWindowScope else { return nil }
 +        guard let window = value.scope.windowID else { throw NativeFailure(code: "WINDOW_SCOPE_REQUIRED", message: "Strict snapshot has no owning window") }
@@ -76,63 +94,183 @@
 +    private func constraint(_ handle: String, _ params: RequestParameters) throws -> AXWindowConstraint? {
 +        try constraint(snapshot(handle, params.string("snapshotId")), handle: handle)
 +    }
-@@ -153,0 +163,4 @@
+@@ -153,0 +166,4 @@
 +        if value.strictWindowScope {
 +            guard let expected = value.scope.windowID else { throw NativeFailure(code: "WINDOW_SCOPE_REQUIRED", message: "Strict snapshot has no owning window") }
 +            try ax().requireWindow(element, expected: expected, owner: validateIdentity(handle))
 +        }
-@@ -289,0 +303 @@
+@@ -236,0 +253 @@
++            if let taskWindow { guard taskWindow.owner == identity else { throw NativeFailure(code: "CUA_TARGET_STALE", message: "Selected application process changed") }; try taskWindow.require() }
+@@ -254,0 +272,38 @@
++        if method == "prepareTaskWindows" {
++            guard taskWindow == nil else { throw NativeFailure(code: "CUA_TARGET_STALE", message: "Target connection already bound") }
++            try NativePlatform.requireAccessibility()
++            taskCandidates.removeAll()
++            let windows = Array(NativePlatform.windows().filter { $0.pid == identity.pid && $0.isOnScreen }.prefix(100))
++            let refs = try ax().children(AXUIElementCreateApplication(identity.pid), "AXWindows")
++            var result: [JSONValue] = []
++            for window in windows {
++                guard let ref = try refs.first(where: { try ax().windowID($0) == window.windowID }) else { continue }
++                let anchor = NativeTaskWindow(owner: identity, windowID: window.windowID, element: ref, timeout: axTimeout, cancellation: cancellation)
++                try anchor.require()
++                let key = try identifier("target")
++                taskCandidates[key] = anchor
++                var metadata = window.json.object ?? [:]
++                metadata["targetKey"] = .string(key)
++                result.append(.object(metadata))
++            }
++            return .result(.array(result))
++        }
++        if method == "bindTaskWindow" {
++            let key = try params.string("targetKey"), id = try params.windowID()
++            guard taskWindow == nil, let selected = taskCandidates[key], selected.owner == identity, selected.windowID == id else {
++                throw NativeFailure(code: "CUA_TARGET_STALE", message: "Operator target candidate expired or changed")
++            }
++            try selected.require()
++            taskWindow = selected; taskHandle = handle; taskCandidates.removeAll()
++            ax().taskWindow = selected
++            return .result(.object(["validated": .bool(true)]))
++        }
++        if let taskWindow {
++            guard taskHandle == handle, taskWindow.owner == identity else { throw NativeFailure(code: "CUA_TARGET_STALE", message: "Target connection identity changed") }
++            try taskWindow.require()
++            if params.contains("windowId"), try params.windowID() != taskWindow.windowID { throw NativeFailure(code: "CUA_TARGET_STALE", message: "Selected window changed") }
++        }
++        if method == "validateTaskWindow" {
++            guard taskWindow != nil else { throw NativeFailure(code: "CUA_TARGET_STALE", message: "Target was not selected by an operator") }
++            return .result(.object(["validated": .bool(true)]))
++        }
+@@ -289,0 +345 @@
 +            let strict = try params.optionalBoolean("strictWindowScope") ?? false
-@@ -296 +310 @@
+@@ -296 +352 @@
 -                    includeMenus: params.optionalBoolean("includeMenus") ?? false, details: params.optionalBoolean("details") ?? false)
 +                    includeMenus: params.optionalBoolean("includeMenus") ?? false, details: params.optionalBoolean("details") ?? false, strictWindowScope: strict)
-@@ -305 +319 @@
+@@ -305 +361,2 @@
 -            let observedWindows = NativePlatform.windows().filter { $0.pid == identity.pid }
++            try taskWindow?.require()
 +            let observedWindows = NativePlatform.windows().filter { $0.pid == identity.pid && (!strict || $0.windowID == window) }
-@@ -308 +322 @@
+@@ -308 +365 @@
 -            snapshots[scope] = NativeSnapshot(id: id, scope: scope, elements: projection.indexed)
 +            snapshots[scope] = NativeSnapshot(id: id, scope: scope, elements: projection.indexed, strictWindowScope: strict)
-@@ -314 +328,2 @@
+@@ -314 +371,2 @@
 -                "focusedWindowId": projection.focusedWindowID.map { .number(Double($0)) } ?? .null,
 +                "focusedWindowId": (!strict || projection.focusedWindowID == window) ? (projection.focusedWindowID.map { .number(Double($0)) } ?? .null) : .null,
 +                "windowScope": .string(strict ? "strict-window" : "application"),
-@@ -335 +350 @@
+@@ -335 +393 @@
 -        case "setValue": try ax().setValue(element(handle, params), params.string("value"))
 +        case "setValue": try ax().setValue(element(handle, params), params.string("value"), constraint: constraint(handle, params))
-@@ -338 +353 @@
+@@ -338 +396 @@
 -                                suffix: params.optionalString("suffix"), mode: params.optionalString("selectionType") ?? "text")
 +                                suffix: params.optionalString("suffix"), mode: params.optionalString("selectionType") ?? "text", constraint: constraint(handle, params))
-@@ -349 +364 @@
+@@ -349 +407 @@
 -            try ax().perform(selected, action)
 +            try ax().perform(selected, action, constraint: constraint(handle, params))
-@@ -358,0 +374 @@
+@@ -358,0 +417 @@
 +            var pointerConstraint: AXWindowConstraint?
-@@ -359,0 +376 @@
+@@ -359,0 +419 @@
 +                pointerConstraint = try constraint(handle, params)
-@@ -368 +385 @@
+@@ -368 +428 @@
 -                        try ax().perform(selected, action)
 +                        try ax().perform(selected, action, constraint: constraint(handle, params))
-@@ -374,0 +392,4 @@
+@@ -374,0 +435,4 @@
 +                if let pointerConstraint {
 +                    try ax().requireWindow(selected, expected: pointerConstraint.windowID, owner: pointerConstraint.owner)
 +                    try WindowScopePolicy.requireRoute(expected: pointerConstraint.windowID, actual: window.windowID)
 +                }
-@@ -382 +403 @@
+@@ -382 +446 @@
 -            let route = WindowRoute(owner: identity, windowID: window.windowID, bounds: window.bounds)
-+            let route = WindowRoute(owner: identity, windowID: window.windowID, bounds: window.bounds, strictWindowID: pointerConstraint?.windowID)
-@@ -469 +490 @@
++            let route = WindowRoute(owner: identity, windowID: window.windowID, bounds: window.bounds, strictWindowID: pointerConstraint?.windowID, taskWindow: taskWindow)
+@@ -401 +465 @@
+-            let route = WindowRoute(owner: identity, windowID: id, bounds: window.bounds)
++            let route = WindowRoute(owner: identity, windowID: id, bounds: window.bounds, taskWindow: taskWindow)
+@@ -469 +533 @@
 -        guard let id = plan.snapshotID, let index = plan.index, let element = try snapshot(plan.appHandle, id).elements[index] else {
 +        guard let id = plan.snapshotID, let index = plan.index else {
-@@ -472 +493,3 @@
+@@ -472 +536,3 @@
 -        try ax().perform(element, "AXRaise")
 +        let value = try snapshot(plan.appHandle, id)
 +        guard let element = value.elements[index] else { throw NativeFailure(code: "STALE_SNAPSHOT", message: "Raise target is no longer available") }
 +        try ax().perform(element, "AXRaise", constraint: constraint(value, handle: plan.appHandle))
+@@ -474,0 +541 @@
++        try taskWindow?.require()
+@@ -486,0 +554 @@
++        try taskWindow?.require()
+@@ -497,2 +565,2 @@
+-    func shutdown() { closed = true; snapshots.removeAll(); observedWindowBounds.removeAll(); targets.removeAll(); hovers.removeAll(); access = nil; keyboard = nil; pointer = nil }
+-}
++    func shutdown() { taskWindow = nil; taskCandidates.removeAll(); closed = true; snapshots.removeAll(); observedWindowBounds.removeAll(); targets.removeAll(); hovers.removeAll(); access = nil; keyboard = nil; pointer = nil }
++}
 --- a/native/Sources/CuaNative/NativeProtocol.generated.swift
 +++ b/native/Sources/CuaNative/NativeProtocol.generated.swift
-@@ -12 +12 @@
+@@ -4,0 +5,3 @@
++        "prepareTaskWindows": ["appHandle"],
++        "bindTaskWindow": ["appHandle", "windowId", "targetKey"],
++        "validateTaskWindow": ["appHandle", "windowId"],
+@@ -12 +15 @@
 -        "getState": ["appHandle", "details", "includeMenus", "maxDepth", "maxElements", "windowId"],
 +        "getState": ["appHandle", "details", "includeMenus", "maxDepth", "maxElements", "strictWindowScope", "windowId"],
+--- a/native/Sources/CuaNative/NativeTaskWindow.swift
++++ b/native/Sources/CuaNative/NativeTaskWindow.swift
+@@ -0,0 +1,25 @@
++// A retained window identity, not an application/input authorization. No AX tree or values.
++import Foundation
++import ApplicationServices
++
++final class NativeTaskWindow: @unchecked Sendable {
++    let owner: ProcessIdentity
++    let windowID: UInt32
++    private let element: AXUIElement
++    private let timeout: Float
++    private let cancellation: CancellationLatch
++    init(owner: ProcessIdentity, windowID: UInt32, element: AXUIElement, timeout: Float, cancellation: CancellationLatch) {
++        self.owner = owner; self.windowID = windowID; self.element = element
++        self.timeout = timeout; self.cancellation = cancellation
++    }
++    func require() throws {
++        try cancellation.check()
++        try NativePlatform.verify(owner)
++        _ = try NativePlatform.ownedWindow(owner.pid, windowID)
++        let access = AXAccess(timeout: timeout, cancellation: cancellation)
++        let current = try access.children(AXUIElementCreateApplication(owner.pid), "AXWindows")
++        guard try current.contains(where: { try access.windowID($0) == windowID && CFEqual($0, element) }) else {
++            throw NativeFailure(code: "CUA_TARGET_STALE", message: "Selected window was closed or replaced; operator must select again")
++        }
++    }
++}
+--- a/native/Sources/CuaNative/Protocol.swift
++++ b/native/Sources/CuaNative/Protocol.swift
+@@ -125,0 +126,10 @@
++    let taskWindow: NativeTaskWindow?
++    let strictWindowID: UInt32?
++
++    init(owner: ProcessIdentity, windowID: UInt32, bounds: WindowBounds, strictWindowID: UInt32? = nil, taskWindow: NativeTaskWindow? = nil) {
++        self.taskWindow = taskWindow
++        self.owner = owner
++        self.windowID = windowID
++        self.bounds = bounds
++        self.strictWindowID = strictWindowID
++    }
+--- a/native/Sources/CuaNative/WindowPointerInput.swift
++++ b/native/Sources/CuaNative/WindowPointerInput.swift
+@@ -86,0 +87 @@
++            try route.taskWindow?.require()
+@@ -90 +91 @@
+-                try await Self.postPair(downInterval: .milliseconds(holdMs ?? 1), checkCancellation: checkCancellation,
++                try await Self.postPair(downInterval: .milliseconds(holdMs ?? 1), checkCancellation: { try checkCancellation(); try route.taskWindow?.require() },
+@@ -99,0 +101 @@
++            try route.taskWindow?.require()
+@@ -102 +104 @@
+-            try await Self.postPair(downInterval: .milliseconds(holdMs ?? 28), checkCancellation: checkCancellation,
++            try await Self.postPair(downInterval: .milliseconds(holdMs ?? 28), checkCancellation: { try checkCancellation(); try route.taskWindow?.require() },
+@@ -134 +136,2 @@
+-        poster.post(move, to: route.owner.pid)
++        try route.taskWindow?.require()
++            poster.post(move, to: route.owner.pid)
+@@ -136,0 +140 @@
++        try route.taskWindow?.require()
+@@ -277,0 +282,2 @@
++        try route.taskWindow?.require()
++        try WindowScopePolicy.requireRoute(expected: route.strictWindowID, actual: route.windowID)
 --- a/native/Sources/CuaNative/WindowScopePolicy.swift
 +++ b/native/Sources/CuaNative/WindowScopePolicy.swift
 @@ -0,0 +1,17 @@
@@ -153,29 +291,116 @@
 +        guard actual == expected else { throw WindowScopeViolation.mismatch }
 +    }
 +}
---- a/native/Sources/CuaNative/AXHover.swift
-+++ b/native/Sources/CuaNative/AXHover.swift
-@@ -8,0 +9,2 @@
-+        try WindowScopePolicy.requireRoute(expected: route.strictWindowID, actual: route.windowID)
-+        let constraint = route.strictWindowID.map { AXWindowConstraint(owner: route.owner, windowID: $0) }
-@@ -27 +29 @@
--            try access.perform(revealed.element, "AXShowDefaultUI")
-+            try access.perform(revealed.element, "AXShowDefaultUI", constraint: constraint)
-@@ -31 +33 @@
--            try access.perform(alternate, "AXShowAlternateUI")
-+            try access.perform(alternate, "AXShowAlternateUI", constraint: constraint)
---- a/native/Sources/CuaNative/Protocol.swift
-+++ b/native/Sources/CuaNative/Protocol.swift
-@@ -125,0 +126,8 @@
-+    let strictWindowID: UInt32?
-+
-+    init(owner: ProcessIdentity, windowID: UInt32, bounds: WindowBounds, strictWindowID: UInt32? = nil) {
-+        self.owner = owner
-+        self.windowID = windowID
-+        self.bounds = bounds
-+        self.strictWindowID = strictWindowID
-+    }
---- a/native/Sources/CuaNative/WindowPointerInput.swift
-+++ b/native/Sources/CuaNative/WindowPointerInput.swift
-@@ -277,0 +278 @@
-+        try WindowScopePolicy.requireRoute(expected: route.strictWindowID, actual: route.windowID)
+--- a/native/protocol.schema.json
++++ b/native/protocol.schema.json
+@@ -1164,0 +1165,110 @@
++    },
++    {
++      "type": "object",
++      "properties": {
++        "id": {
++          "type": "string"
++        },
++        "method": {
++          "const": "prepareTaskWindows",
++          "type": "string"
++        },
++        "params": {
++          "type": "object",
++          "properties": {
++            "appHandle": {
++              "type": "string",
++              "minLength": 1
++            }
++          },
++          "required": [
++            "appHandle"
++          ],
++          "additionalProperties": false
++        }
++      },
++      "required": [
++        "id",
++        "method",
++        "params"
++      ],
++      "additionalProperties": false
++    },
++    {
++      "type": "object",
++      "properties": {
++        "id": {
++          "type": "string"
++        },
++        "method": {
++          "const": "bindTaskWindow",
++          "type": "string"
++        },
++        "params": {
++          "type": "object",
++          "properties": {
++            "appHandle": {
++              "type": "string",
++              "minLength": 1
++            },
++            "windowId": {
++              "type": "integer",
++              "minimum": 1,
++              "maximum": 4294967295
++            },
++            "targetKey": {
++              "type": "string",
++              "minLength": 1
++            }
++          },
++          "required": [
++            "appHandle",
++            "windowId",
++            "targetKey"
++          ],
++          "additionalProperties": false
++        }
++      },
++      "required": [
++        "id",
++        "method",
++        "params"
++      ],
++      "additionalProperties": false
++    },
++    {
++      "type": "object",
++      "properties": {
++        "id": {
++          "type": "string"
++        },
++        "method": {
++          "const": "validateTaskWindow",
++          "type": "string"
++        },
++        "params": {
++          "type": "object",
++          "properties": {
++            "appHandle": {
++              "type": "string",
++              "minLength": 1
++            },
++            "windowId": {
++              "type": "integer",
++              "minimum": 1,
++              "maximum": 4294967295
++            }
++          },
++          "required": [
++            "appHandle",
++            "windowId"
++          ],
++          "additionalProperties": false
++        }
++      },
++      "required": [
++        "id",
++        "method",
++        "params"
++      ],
++      "additionalProperties": false

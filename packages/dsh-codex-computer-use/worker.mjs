@@ -45,7 +45,7 @@ function inputGoal(args) {
 }
 
 /** Register the bounded tool; invocation requires the live official provider. */
-export function computerUseTool(ctx, config, acquireLease = acquireDesktopLease) {
+export function computerUseTool(ctx, configured, acquireLease = acquireDesktopLease) {
   const active = new Map()
   let unloading = false
   ctx.effect(() => async () => {
@@ -61,6 +61,10 @@ export function computerUseTool(ctx, config, acquireLease = acquireDesktopLease)
     isConcurrencySafe: () => false,
     async execute(args, execution) {
       const goal = inputGoal(args)
+      const targets = ctx.get('cuaTaskTargets')
+      let selected
+      try { selected = targets?.target(execution.agent) } catch { return {status:'blocked',reason:'operator_target_required'} }
+      const config = { ...configured, ...selected }
       const parent = execution.agent
       if (unloading || !parent || ctx.agents.get(parent.id) !== parent) return { status: 'blocked', reason: 'live_parent_required' }
       if (ctx.agentPresets.composedPreset(parent.ctx) === PRESET) return { status: 'blocked', reason: 'recursive_worker_denied' }
@@ -86,7 +90,7 @@ export function computerUseTool(ctx, config, acquireLease = acquireDesktopLease)
           signal.throwIfAborted()
           if (unloading || !lease.valid()) { state.blocked = 'desktop_lease_lost'; abort.abort('lease_lost'); throw new Error('CUA_LEASE_LOST') }
           if (ctx.agents.get(parent.id) !== parent) { state.blocked = 'parent_disposed'; abort.abort('parent_disposed'); throw new Error('CUA_PARENT_DISPOSED') }
-          if (ctx.get('computerUse')?.providerName !== 'dsh-cua' || ctx.get('cuaWindowScope') !== windowScope || ctx.get('cuaTaskApproval') !== taskApproval) { state.blocked = 'cua_provider_changed'; abort.abort('provider_changed'); throw new Error('CUA_PROVIDER_CHANGED') }
+          if (ctx.get('computerUse')?.providerName !== 'dsh-cua' || ctx.get('cuaWindowScope') !== windowScope || ctx.get('cuaTaskApproval') !== taskApproval || ctx.get('cuaTaskTargets') !== targets) { state.blocked = 'cua_provider_changed'; abort.abort('provider_changed'); throw new Error('CUA_PROVIDER_CHANGED') }
         }
         try {
           check()
@@ -184,7 +188,7 @@ export function computerUseTool(ctx, config, acquireLease = acquireDesktopLease)
           })
           const child = state.handle.agent
           if (!ctx.agents.isOwnedBy(child.id, parent) || !child.ctx.tools.get('cua', child)) { state.blocked = 'scoped_cua_unavailable'; return }
-          taskGrant = taskApproval.begin({ parent, child, application: config.application, windowId: config.windowId, goal, expiresAt: started + config.maxDurationMs, signal })
+          taskGrant = taskApproval.begin({ parent, child, application: config.application, windowId: config.windowId, goal, expiresAt: started + config.maxDurationMs, signal, ...(config.targetSelectionId ? {targetSelectionId:config.targetSelectionId} : {}) })
           taskRevoked = () => { state.blocked ??= Date.now() >= started + config.maxDurationMs ? 'task_authorization_expired' : 'task_authorization_revoked'; abort.abort('task_permission_closed') }
           taskGrant.signal.addEventListener('abort', taskRevoked, { once: true })
           if (taskGrant.signal.aborted) taskRevoked()
@@ -201,7 +205,7 @@ export function computerUseTool(ctx, config, acquireLease = acquireDesktopLease)
           if (!signal.aborted && !state.blocked) state.blocked = error?.code === 'CUA_TASK_RETRY_REQUIRES_USER_INPUT' ? 'task_retry_requires_new_user_input' : 'host_execution_failed'
         } finally {
           if (taskGrant && taskRevoked) taskGrant.signal.removeEventListener('abort', taskRevoked)
-          const cleanup = await Promise.allSettled([Promise.resolve().then(() => taskGrant?.dispose()), Promise.resolve().then(() => state.handle?.dispose())])
+          const cleanup = await Promise.allSettled([Promise.resolve().then(() => taskGrant?.dispose()), Promise.resolve().then(() => selected && !taskGrant ? targets.clear(parent.id) : undefined), Promise.resolve().then(() => state.handle?.dispose())])
           quiescent = cleanup.every(result => result.status === 'fulfilled')
           if (!quiescent) state.blocked = 'cleanup_uncertain'
         }

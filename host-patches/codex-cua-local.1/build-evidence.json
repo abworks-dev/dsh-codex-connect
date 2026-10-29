@@ -30,5 +30,29 @@
   "currentPatchManifestSha256": "47eef459f42d59d897a97ef73709e8e7bb7dec8b25932b1924de802fd35597ca",
   "nativeBuildSourceContentMatchesCurrentManifest": true,
   "sourceLockSha256": "f0e6d92a962de7e6a0504276567dd6bd7815eb2d9aae4414ac96e353f7148344",
-  "wholePublishedPackagesVerified": 321
+  "wholePublishedPackagesVerified": 321,
+  "local3": {
+    "candidateVersion": "0.2.2-alpha.2.codex-cua-local.3",
+    "sourceManifestSha256": "7605c5376c81d07db1582b35799106a6e31aaef75ea57c454521e0bb39e63f21",
+    "wholePublishedPackagesVerified": 321,
+    "native": {
+      "built": true,
+      "architecture": "arm64",
+      "compiler": "Apple Swift 6.4",
+      "languageMode": 6,
+      "sha256": "d7a96a8aef6879c9a8ad032b236310181ef724617131ee97ad0a05069322f426",
+      "executed": false,
+      "scope": "local.3 window-object identity and dispatch source; compiled only; reused only after every Swift source byte matched"
+    },
+    "validation": {
+      "sourceCheck": "passed; 2384 tests passed, 2 skipped; typecheck, lint, build and package checks passed",
+      "hostComposition": "47 passed on actual installed Host modules with in-memory scripted model, native metadata, and human answers; includes strict owner/no-invocation/non-owner checks and UI clear failure/success",
+      "compatibility": "45 passed; exact local.3 added without admitting mixed or future peers",
+      "sourceProvenance": "2 pure tests passed; final candidate builder compared all 321 complete original packages to verified locked tarballs",
+      "browser": "97 passed in 14 files with isolated Playwright headless browser; initial absent-browser failure preserved",
+      "installedCandidate": "fresh local.3 dependency installation passed with empty npm configs and disabled lifecycle scripts; actual installed-Host composition/full Connect profile regression pending",
+      "remoteCiAndIndependentFinalReview": "pending exact commit"
+    },
+    "desktopAndLiveHumanConsent": "not executed; no application/OS grant, model request, GUI observation/input, service change or parity claim"
+  }
 }

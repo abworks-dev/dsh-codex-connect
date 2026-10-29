@@ -26,6 +26,8 @@ The maintainer subsequently approved two local Host changes for that instance: p
 
 The maintainer then approved a narrow `codex-cua-local.2` extension for single-task delegated human consent: the true root conversation shows the native application, window, task and expiry, and the human may approve that exact child/task without permanent access. Cancellation, revocation, timeout and completion invalidate the in-memory task grant. This admits the Host/companion interface, offline fixtures and reviewed reversible deployment; it does not itself grant application or OS access. The existing root-interaction guard and stored permissions remain intact. Actual consent still requires a human choice for a concrete target; no general permission platform or automatic approval is admitted.
 
+The maintainer separately approved `codex-cua-local.3` to fix the first-use target-selection/consent cycle. This admits a bounded owner-only, application-scoped native-window metadata selector, retained process/window identity, its synthetic tests and reviewed reversible replacement of the designated instance. Selection does not grant control, expose page content, request OS access or replace the actual root task approval. No broader model desktop discovery or public release is admitted.
+
 | Surface | Disposition | Retained obligations |
 | --- | --- | --- |
 | Authorization, manual models, installation, compatibility, Canary, diagnostics | Maintain | Scoped defect fixes and supported-version evidence; no automatic expansion of support |
