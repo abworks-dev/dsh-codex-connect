@@ -32,8 +32,8 @@ export async function prepareTaskSession(repo, version = '0.1.2-rc.1') {
   const artifact = join(directory, pack.filename)
   console.log(`Preparing exact DSH ${version} full Web profile`)
   const registry = cachedTaskRegistry(join(repo, 'node_modules/.cache/task-matrix/manifests'))
-  const overrides = await resolveExactDshOverrides(version, registry)
-  const metadata = exactDshFixtureManifest(overrides), vendorPackages = {}
+  const resolution = await resolveExactDshOverrides(version, registry)
+  const metadata = exactDshFixtureManifest(resolution), vendorPackages = {}
   // Reproduce this published host's Cordis baseline, not a later vendor release.
   // A fresh latest-compatible closure can fail before the plugin/page boots.
   for (const [name, range] of Object.entries((await registry('@deepseek-ai/dsh', version)).dependencies)) {
