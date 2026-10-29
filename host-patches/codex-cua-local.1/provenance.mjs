@@ -1,6 +1,6 @@
 /** Verify the whole input package against an integrity-pinned published tarball. */
 import { createHash } from 'node:crypto'
-import { lstat, readdir, readFile, mkdir, writeFile, mkdtemp, rm } from 'node:fs/promises'
+import { cp, lstat, readdir, readFile, mkdir, writeFile, mkdtemp, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 
@@ -15,8 +15,19 @@ export function assertClosure(dependencies, lock, spec) {
     const entry = lock.packages[name]
     const short = name.slice('@deepseek-ai/'.length)
     if (entry.version !== spec.baseVersion || entry.tarball !== `https://registry.npmjs.org/@deepseek-ai/${short}/-/${short}-${spec.baseVersion}.tgz` || !/^sha512-[A-Za-z0-9+/]+={0,2}$/u.test(entry.integrity)) throw new Error(`Invalid published lock: ${name}`)
+    if (dependencies[name] !== spec.baseVersion) throw new Error(`Published dependency is not exactly pinned: ${name}`)
   }
   return names
+}
+
+/** Preserve required-over-optional priority in the isolated candidate, including platform packages. */
+export function localDependencyLayout(input, names, thirdParty = {}) {
+  const dependencies = { ...thirdParty }, optionalDependencies = {}, overrides = {}
+  for (const name of names) {
+    const field = Object.hasOwn(input.dependencies ?? {}, name) ? dependencies : optionalDependencies
+    field[name] = overrides[name] = `file:../packages/${name.slice('@deepseek-ai/'.length)}`
+  }
+  return { dependencies, optionalDependencies, overrides, pnpm: { overrides } }
 }
 
 export function assertIntegrity(bytes, integrity) {
@@ -61,14 +72,33 @@ async function inventory(directory) {
   return JSON.stringify(entries)
 }
 
-export async function verifyPublishedPackage(input, archive, integrity, temporaryRoot) {
-  assertIntegrity(await readFile(archive), integrity)
-  const names = tar(['-tzf', archive]).trim().split('\n')
-  if (!names.length || names.some(name => !/^package(?:\/|$)/u.test(name) || name.split('/').some(part => part === '..' || part === '.') || name.includes('\\'))) throw new Error('Unsafe published archive path')
-  if (tar(['-tvzf', archive]).trim().split('\n').some(line => !/^[-d]/u.test(line))) throw new Error('Published archive links or special files are unsupported')
-  const extracted = await mkdtemp(join(temporaryRoot, 'published-'))
+async function withPublishedPackage(archive, integrity, temporaryRoot, use) {
+  const bytes = await readFile(archive)
+  assertIntegrity(bytes, integrity)
+  const directory = await mkdtemp(join(temporaryRoot, 'published-'))
+  const snapshot = join(directory, 'source.tgz'), extracted = join(directory, 'package')
   try {
-    tar(['-xzf', archive, '-C', extracted, '--strip-components=1'])
+    // Validate and extract the same integrity-checked private snapshot.
+    await writeFile(snapshot, bytes, { flag: 'wx', mode: 0o400 })
+    const names = tar(['-tzf', snapshot]).trim().split('\n')
+    if (!names.length || names.some(name => !/^package(?:\/|$)/u.test(name) || name.split('/').some(part => part === '..' || part === '.') || name.includes('\\'))) throw new Error('Unsafe published archive path')
+    if (tar(['-tvzf', snapshot]).trim().split('\n').some(line => !/^[-d]/u.test(line))) throw new Error('Published archive links or special files are unsupported')
+    await mkdir(extracted)
+    tar(['-xzf', snapshot, '-C', extracted, '--strip-components=1'])
+    return await use(extracted)
+  } finally { await rm(directory, { recursive: true, force: true }) }
+}
+
+export async function verifyPublishedPackage(input, archive, integrity, temporaryRoot) {
+  return withPublishedPackage(archive, integrity, temporaryRoot, async extracted => {
     if (await inventory(input) !== await inventory(extracted)) throw new Error('Complete published package contents mismatch')
-  } finally { await rm(extracted, { recursive: true, force: true }) }
+  })
+}
+
+/** Source only: materialize a skipped optional package without installing or executing it. */
+export async function copyVerifiedPublishedPackage(archive, integrity, destination, temporaryRoot) {
+  return withPublishedPackage(archive, integrity, temporaryRoot, async extracted => {
+    await cp(extracted, destination, { recursive: true, dereference: false, force: false, errorOnExist: true })
+    if (await inventory(destination) !== await inventory(extracted)) throw new Error('Complete published source copy mismatch')
+  })
 }

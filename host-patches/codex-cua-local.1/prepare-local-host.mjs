@@ -5,7 +5,7 @@ import { createRequire } from 'node:module'
 import { dirname, join, resolve, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
-import { assertClosure, publishedTarball, verifyPublishedPackage } from './provenance.mjs'
+import { assertClosure, publishedTarball, verifyPublishedPackage, copyVerifiedPublishedPackage, localDependencyLayout } from './provenance.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const spec = JSON.parse(await readFile(join(here, 'manifest.json'), 'utf8'))
@@ -23,19 +23,25 @@ export async function prepareLocalHost(publishedFixture, output, { native = fals
   await mkdir(target)
   const require = createRequire(join(source, 'package.json'))
   const input = JSON.parse(await readFile(join(source, 'package.json'), 'utf8'))
-  const names = assertClosure(input.dependencies, lock, spec)
+  const names = assertClosure({ ...input.optionalDependencies, ...input.dependencies }, lock, spec)
   const packages = join(target, 'packages')
   await mkdir(packages)
   let verified = 0
   for (const name of names) {
-    const original = require.resolve(`${name}/package.json`)
     const archive = await publishedTarball(join(source, 'verified-tarballs'), name, lock.packages[name])
     const destination = join(packages, name.slice('@deepseek-ai/'.length))
-    await cp(dirname(original), destination, { recursive: true, dereference: false,
-      filter: path => !relative(dirname(original), path).split(/[\\/]/u).some(part => part === 'node_modules' || part === '.build') })
-    // Validate the copied bytes we will actually patch, rather than a prior
-    // observation of a mutable input directory. Links are never dereferenced.
-    await verifyPublishedPackage(destination, archive, lock.packages[name].integrity, target)
+    let original
+    try { original = require.resolve(`${name}/package.json`) } catch (error) {
+      if (error.code !== 'MODULE_NOT_FOUND' || Object.hasOwn(input.dependencies ?? {}, name) || !Object.hasOwn(input.optionalDependencies ?? {}, name)) throw error
+    }
+    if (original) {
+      await cp(dirname(original), destination, { recursive: true, dereference: false,
+        filter: path => !relative(dirname(original), path).split(/[\\/]/u).some(part => part === 'node_modules' || part === '.build') })
+      // Verify the copied bytes we will actually patch, not an earlier mutable input.
+      await verifyPublishedPackage(destination, archive, lock.packages[name].integrity, target)
+    } else {
+      await copyVerifiedPublishedPackage(archive, lock.packages[name].integrity, destination, target)
+    }
     const metadata = JSON.parse(await readFile(join(destination, 'package.json'), 'utf8'))
     if (metadata.name !== name || metadata.version !== spec.baseVersion) throw new Error(`Not the original exact package: ${name}`)
     const patch = spec.packages[name]
@@ -75,10 +81,7 @@ export async function prepareLocalHost(publishedFixture, output, { native = fals
   }
   const runtime = join(target, 'runtime')
   await mkdir(runtime)
-  const dependencies = { ...thirdParty }
-  const overrides = {}
-  for (const name of names) dependencies[name] = overrides[name] = `file:../packages/${name.slice('@deepseek-ai/'.length)}`
-  await writeFile(join(runtime, 'package.json'), `${JSON.stringify({ private: true, dependencies, overrides, pnpm: { overrides } }, null, 2)}\n`)
+  await writeFile(join(runtime, 'package.json'), `${JSON.stringify({ private: true, ...localDependencyLayout(input, names, thirdParty) }, null, 2)}\n`)
   const report = { schemaVersion: 1, id: spec.id, baseVersion: spec.baseVersion, version: spec.candidateVersion,
     published: false, dshPackages: names.length, patchManifestSha256: sha256(await readFile(join(here, 'manifest.json'))),
     sourceLockSha256: sha256(await readFile(join(here, 'published-lock.json'))), wholePublishedPackagesVerified: names.length,

@@ -6,7 +6,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createHash } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
-import { assertClosure, assertIntegrity, verifyPublishedPackage } from './provenance.mjs'
+import { assertClosure, assertIntegrity, verifyPublishedPackage, copyVerifiedPublishedPackage, localDependencyLayout } from './provenance.mjs'
+import { assertCuaFixturePackages } from '../../scripts/cua-fixture-packages.mjs'
 
 const integrity = bytes => `sha512-${createHash('sha512').update(bytes).digest('base64')}`
 test('closure cannot omit a patched or unpatched dependency or change patch provenance', () => {
@@ -19,6 +20,15 @@ test('closure cannot omit a patched or unpatched dependency or change patch prov
   for (const omitted of names) assert.throws(() => assertClosure(Object.fromEntries(Object.entries(dependencies).filter(([name]) => name !== omitted)), lock, spec), /incomplete/)
   assert.throws(() => assertClosure({ ...dependencies, '@deepseek-ai/dsh-foreign': '0.2.2-alpha.2' }, lock, spec), /unexpected/)
   assert.throws(() => assertClosure(dependencies, lock, { ...spec, packages: { '@deepseek-ai/dsh-agent': { baseIntegrity: 'sha512-Yg==' } } }), /provenance/)
+  assert.throws(() => assertClosure({ ...dependencies, '@deepseek-ai/dsh-agent': '^0.2.2-alpha.2' }, lock, spec), /exactly pinned/)
+  const optional = { '@deepseek-ai/dsh-agent': '0.2.2-alpha.2' }, required = { '@deepseek-ai/dsh': '0.2.2-alpha.2' }
+  assert.deepEqual(assertClosure({ ...optional, ...required }, lock, spec), names)
+  const layout = localDependencyLayout({ dependencies: required, optionalDependencies: optional }, names)
+  assert.equal(Object.hasOwn(layout.dependencies, '@deepseek-ai/dsh-agent'), false)
+  assert.equal(layout.optionalDependencies['@deepseek-ai/dsh-agent'], 'file:../packages/dsh-agent')
+  const requiredWins = localDependencyLayout({ dependencies, optionalDependencies: optional }, names)
+  assert.equal(requiredWins.dependencies['@deepseek-ai/dsh-agent'], 'file:../packages/dsh-agent')
+  assert.equal(Object.hasOwn(requiredWins.optionalDependencies, '@deepseek-ai/dsh-agent'), false)
 })
 
 test('whole-package validation catches unpatched source tampering, extra files, missing files and archive corruption', async () => {
@@ -45,4 +55,42 @@ test('whole-package validation catches unpatched source tampering, extra files, 
     assert.equal(spawnSync('tar', ['-czf', archive, '-C', packed, 'package']).status, 0)
     await assert.rejects(verifyPublishedPackage(input, archive, integrity(await readFile(archive)), root), /links or special/)
   } finally { await rm(root, { recursive: true, force: true }) }
+})
+
+test('a platform-skipped optional archive is copied as verified source without changing its OS contract', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'cua-source-only-'))
+  try {
+    const packed = join(root, 'packed'), original = join(packed, 'package'), archive = join(root, 'package.tgz'), destination = join(root, 'source-only')
+    await mkdir(original, { recursive: true })
+    const metadata = { name: '@deepseek-ai/dsh-experimental-cua-macos', version: '0.2.2-alpha.2', os: ['darwin'] }
+    await writeFile(join(original, 'package.json'), JSON.stringify(metadata))
+    await writeFile(join(original, 'native.swift'), '// Synthetic source only; never compiled or executed\n')
+    assert.equal(spawnSync('tar', ['-czf', archive, '-C', packed, 'package']).status, 0)
+    const expected = integrity(await readFile(archive))
+    await copyVerifiedPublishedPackage(archive, expected, destination, root)
+    assert.deepEqual(JSON.parse(await readFile(join(destination, 'package.json'))), metadata)
+    await verifyPublishedPackage(destination, archive, expected, root)
+    await assert.rejects(copyVerifiedPublishedPackage(archive, 'sha512-Yg==', join(root, 'bad'), root), /integrity mismatch/)
+    await writeFile(join(destination, 'native.swift'), 'tampered source\n')
+    await assert.rejects(verifyPublishedPackage(destination, archive, expected, root), /contents mismatch/)
+    await symlink('outside', join(original, 'link'))
+    assert.equal(spawnSync('tar', ['-czf', archive, '-C', packed, 'package']).status, 0)
+    await assert.rejects(copyVerifiedPublishedPackage(archive, integrity(await readFile(archive)), join(root, 'links'), root), /links or special/)
+  } finally { await rm(root, { recursive: true, force: true }) }
+})
+
+test('Host version admission permits only a declared platform-optional absence, never a missing required or wrong native package', () => {
+  const name = '@deepseek-ai/dsh-experimental-cua-macos', version = '0.2.2-alpha.2'
+  const missing = () => { const error = new Error(`Cannot find module '${name}/package.json'`); error.code = 'MODULE_NOT_FOUND'; throw error }
+  const require = path => path === `${name}/package.json` ? missing() : { version }
+  const optional = { optionalDependencies: { [name]: version } }
+  assert.equal(assertCuaFixturePackages(require, version, optional, 'linux').nativeBackend, 'omitted_platform_optional')
+  assert.throws(() => assertCuaFixturePackages(require, version, optional, 'darwin'), /Cannot find module/)
+  assert.throws(() => assertCuaFixturePackages(require, version, {}, 'linux'), /Cannot find module/)
+  assert.throws(() => assertCuaFixturePackages(require, version, { ...optional, dependencies: { [name]: version } }, 'linux'), /Cannot find module/)
+  assert.throws(() => assertCuaFixturePackages(() => ({ version: 'wrong' }), version, optional, 'linux'), /Wrong exact Host/)
+  const wrongNative = path => ({ version: path === `${name}/package.json` ? 'wrong' : version })
+  assert.throws(() => assertCuaFixturePackages(wrongNative, version, optional, 'linux'), /Wrong exact Host/)
+  const wrongError = path => { if (path === `${name}/package.json`) { const error = new Error('Cannot find another module'); error.code = 'MODULE_NOT_FOUND'; throw error }; return { version } }
+  assert.throws(() => assertCuaFixturePackages(wrongError, version, optional, 'linux'), /another module/)
 })

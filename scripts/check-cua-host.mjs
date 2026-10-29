@@ -1,5 +1,5 @@
 /** Keyless exact-published-Host composition check; never uses a daily profile or native driver. */
-import { cp, mkdtemp, writeFile, rm } from 'node:fs/promises'
+import { cp, mkdtemp, readFile, writeFile, rm } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -8,6 +8,7 @@ import { runBoundedCommand } from './bounded-command.mjs'
 import { scrubCanaryEnvironment } from './canary-environment.mjs'
 import { resolveExactDshOverrides, exactDshFixtureManifest, readDshRegistryManifest } from './exact-dsh-fixture.mjs'
 import { prepareLocalHost } from '../host-patches/codex-cua-local.1/prepare-local-host.mjs'
+import { assertCuaFixturePackages } from './cua-fixture-packages.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const supplied = process.env.DSH_CUA_FIXTURE
@@ -45,15 +46,13 @@ try {
     await command('pnpm', ['--ignore-workspace', '--config.minimum-release-age=0', 'install', '--ignore-scripts', '--store-dir', join(fixture, 'store')])
   }
   const require = createRequire(join(fixture, 'package.json'))
-  for (const name of ['dsh', 'dsh-agent', 'dsh-tools', 'dsh-agent-preset-registry', 'dsh-cua', 'dsh-tool-executor-native', 'dsh-experimental-cua-macos']) {
-    if (require(`@deepseek-ai/${name}/package.json`).version !== version) throw new Error(`Wrong exact Host package: ${name}`)
-  }
+  const platformPackages = assertCuaFixturePackages(require, version, JSON.parse(await readFile(join(fixture, 'package.json'), 'utf8')))
   const candidate = await mkdtemp(join(fixture, 'computer-use-candidate-'))
   try {
     await cp(join(root, 'packages/dsh-codex-computer-use'), candidate, { recursive: true })
     const result = await command(process.execPath, ['--test', join(candidate, 'test/host.test.mjs'), join(candidate, 'test/installation.test.mjs')])
     process.stdout.write(result.stdout)
-    const report = { schemaVersion: 1, dshVersion: version, provider: 'scripted_in_memory', cuaTransport: 'synthetic', realModelRequests: 0, desktopActions: 0, parityAccepted: false }
+    const report = { schemaVersion: 1, dshVersion: version, ...platformPackages, provider: 'scripted_in_memory', cuaTransport: 'synthetic', realModelRequests: 0, desktopActions: 0, parityAccepted: false }
     process.stdout.write(`${JSON.stringify(report)}\n`)
   } finally { await rm(candidate, { recursive: true, force: true }) }
   if (withLocalPatch) {
