@@ -291,55 +291,61 @@
 +			this.taskRefusals.set(task.parent, task.userInput);
 +			void this.endTask(task).catch(() => {});
 +		}
-@@ -1120,0 +1367 @@
+@@ -1088 +1334,4 @@
+-operation("launchApp", app), operation("permissionStatus", {}), operation("applicationIcons", { paths: z.array(z.string().min(1)) }), operation("requestPermission", { permission: z.enum(["accessibility", "screenRecording"]) }), operation("openPermissionSettings", { permission: z.enum(["accessibility", "screenRecording"]) });
++operation("prepareTaskWindows", app),
++    operation("bindTaskWindow", {...app, windowId:id, targetKey:z.string().min(1)}),
++    operation("validateTaskWindow", {...app, windowId:id}),
++    operation("launchApp", app), operation("permissionStatus", {}), operation("applicationIcons", { paths: z.array(z.string().min(1)) }), operation("requestPermission", { permission: z.enum(["accessibility", "screenRecording"]) }), operation("openPermissionSettings", { permission: z.enum(["accessibility", "screenRecording"]) });
+@@ -1120,0 +1370 @@
 +	windowScope: z.enum(["strict-window", "application"]).optional(),
-@@ -1258,0 +1506 @@
+@@ -1258,0 +1509 @@
 +            for (const name of ["discoverTaskTargets", "selectTaskTarget", "clearTaskTargets"]) __esDecorate(this, null, [Remote], { kind: "method", name, static: false, private: false, access: { has: obj => name in obj, get: obj => obj[name] }, metadata: _metadata }, null, _instanceExtraInitializers);
-@@ -1379,0 +1628,4 @@
+@@ -1379,0 +1631,4 @@
 +        assertTargetOperator() { if (this.ctx.invocation?.peer.principal.kind !== "owner") throw new NativeError("CUA_TARGET_OPERATOR_REQUIRED", "Target discovery is restricted to the authenticated local operator"); }
 +        discoverTaskTargets(sessionId, application) { this.assertTargetOperator(); return this.ctx.cuaTaskTargets.discover(sessionId, application); }
 +        selectTaskTarget(sessionId, candidateId) { this.assertTargetOperator(); return this.ctx.cuaTaskTargets.select(sessionId, candidateId); }
 +        clearTaskTargets(sessionId) { this.assertTargetOperator(); return this.ctx.cuaTaskTargets.clear(sessionId); }
-@@ -1486,0 +1739,4 @@
+@@ -1486,0 +1742,4 @@
 +		beginTask: policy.beginTask.bind(policy),
 +		taskFor: policy.taskFor.bind(policy),
 +		checkTaskRequest: policy.checkTaskRequest.bind(policy),
 +		observeTask: policy.observeTask.bind(policy),
-@@ -1577,0 +1834 @@
+@@ -1577,0 +1837 @@
 +	strictWindowScope: Schema.boolean().default(false),
-@@ -1645,0 +1903 @@
+@@ -1645,0 +1906 @@
 +	ctx.provide("cuaWindowScope", Object.freeze({ version: 1, strictWindowScope: config.strictWindowScope === true }));
-@@ -1668,0 +1927,2 @@
+@@ -1668,0 +1930,2 @@
 +    if (config.strictWindowScope === true) ctx.provide("cuaTaskTargets", new TaskTargets(ctx, () => new NativeClient(ctx, native, backend.createChannel), code => new NativeError(code, "Operator target selection is missing, stale or invalid")));
 +	if (config.strictWindowScope === true) ctx.provide("cuaTaskApproval", Object.freeze({ version: 1, begin: (input) => access.beginTask(input) }));
-@@ -1720,0 +1981 @@
+@@ -1720,0 +1984 @@
 +			access.checkTaskRequest(execution.agent, request);
-@@ -1739 +2000,2 @@
+@@ -1739 +2003,2 @@
 -				maxDepth: config.maxDepth
 +				maxDepth: config.maxDepth,
 +				strictWindowScope: config.strictWindowScope
-@@ -1748,0 +2011 @@
+@@ -1748,0 +2014 @@
 +				access.observeTask(agent, request, screenshot);
-@@ -1781 +2044 @@
+@@ -1781 +2047 @@
 -				await access.select(agent, client, prepared.appHandle, authorization, signal, applicationIcon);
 +				await access.select(agent, client, prepared.appHandle, authorization, signal, applicationIcon, prepared);
-@@ -1793,0 +2057 @@
+@@ -1793,0 +2060 @@
 +				access.observeTask(agent, request, state);
-@@ -1813,0 +2078 @@
+@@ -1813,0 +2081 @@
 +				access.checkTaskRequest(agent, request);
-@@ -1820 +2085,2 @@
+@@ -1820 +2088,2 @@
 -					owner.signal
 +					owner.signal,
 +					...access.taskFor(agent) ? [access.taskFor(agent).signal] : []
-@@ -1827 +2093,2 @@
+@@ -1827 +2096,2 @@
 -					let client = clients.get(agent);
 +                    let client = clients.get(agent) ?? access.taskFor(agent)?.nativeClient;
 +                    if (client && !clients.has(agent)) { clients.set(agent, client); owner.coordinates = new CuaCoordinates(); }
-@@ -1828,0 +2096 @@
+@@ -1828,0 +2099 @@
 +					if (access.taskFor(agent)?.nativeClient?.disposed) throw new NativeError("CUA_TASK_CLOSED", "Selected native target connection expired");
-@@ -1836,0 +2105 @@
+@@ -1836,0 +2108 @@
 +					access.taskFor(agent)?.clients.add(nativeClient);
-@@ -1916,0 +2186,2 @@
+@@ -1916,0 +2189,2 @@
 +
 +export const STRICT_WINDOW_SCOPE_VERSION = 1;
 --- a/lib/protocol.js
@@ -348,7 +354,13 @@
 -		maxDepth: z.number().int().min(1).max(100)
 +		maxDepth: z.number().int().min(1).max(100),
 +		strictWindowScope: z.boolean().optional()
-@@ -242,0 +244 @@
+@@ -203 +204,4 @@
+-	operation("launchApp", app),
++	operation("prepareTaskWindows", app),
++    operation("bindTaskWindow", {...app, windowId:id, targetKey:z.string().min(1)}),
++    operation("validateTaskWindow", {...app, windowId:id}),
++    operation("launchApp", app),
+@@ -242,0 +247 @@
 +	windowScope: z.enum(["strict-window", "application"]).optional(),
 --- a/lib/typert.host.js
 +++ b/lib/typert.host.js
@@ -425,5 +437,8 @@
 +++ b/lib/types/protocol.d.ts
 @@ -265,0 +266 @@
 +        strictWindowScope: z.ZodOptional<z.ZodBoolean>;
+@@ -282 +283 @@
+-export declare const NativeOnlyOperations: readonly [z.ZodObject<{
++export declare const NativeOnlyOperations: readonly [z.ZodObject<{method:z.ZodLiteral<"prepareTaskWindows">;params:z.ZodObject<{appHandle:z.ZodString;},z.core.$strict>;},z.core.$strict>,z.ZodObject<{method:z.ZodLiteral<"bindTaskWindow">;params:z.ZodObject<{appHandle:z.ZodString;windowId: z.ZodNumber; targetKey: z.ZodString;},z.core.$strict>;},z.core.$strict>,z.ZodObject<{method:z.ZodLiteral<"validateTaskWindow">;params:z.ZodObject<{appHandle:z.ZodString;windowId: z.ZodNumber;},z.core.$strict>;},z.core.$strict>,z.ZodObject<{
 @@ -352,0 +354 @@
 +    windowScope: z.ZodOptional<z.ZodEnum<{ "strict-window": "strict-window"; application: "application" }>>;

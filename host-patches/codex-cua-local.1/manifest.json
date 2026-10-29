@@ -48,7 +48,7 @@
     "@deepseek-ai/dsh-cua": {
       "baseIntegrity": "sha512-yceImk1O0NkKTdwe8IQYX9SPmsulcJD7LtmPm7oJXunY2+4HQkJNA3qOSk5zJyr1NpWffnRdUcJvTIDgIMGOSA==",
       "patch": "patches/dsh-cua.patch",
-      "patchSha256": "2c72ee799b5b627019bc011c566e62c5754a6ab744def6026e5eba8b2c974880",
+      "patchSha256": "6a08d0cf5be29cd7c53da2f93b3c5fc68ed8c6a3a7fd0588cbeab9fab82ef415",
       "files": [
         {
           "path": "lib/bridge.js",
@@ -63,12 +63,12 @@
         {
           "path": "lib/index.js",
           "baseSha256": "e62f507fa5471f2797eb9d4f0d22f10f5edb3d49d05f2be2ea7ae6024485b2b2",
-          "patchedSha256": "80b3fa08244b77f6aebcf8fda04d6ff6adcb4a44f4aa1c21663cac3a6b13eb09"
+          "patchedSha256": "05855ff88585cc2926007c2c152726a0bcfd3ec40e6d263bebe6ee681e8add78"
         },
         {
           "path": "lib/protocol.js",
           "baseSha256": "ae494308a7808720e587cc2ca55041aa998131bada52d00cad9cd2fcdd3bb16e",
-          "patchedSha256": "c979a49870da49e06dc56c5fdce74f23430ab3e3376376b400cfc38df8162398"
+          "patchedSha256": "ee36ae40d0ffc4c6c20e8e585391e94cb984f8160bd5d254a93121a7142cbde4"
         },
         {
           "path": "lib/typert.host.js",
@@ -98,7 +98,7 @@
         {
           "path": "lib/types/protocol.d.ts",
           "baseSha256": "3d16df6fb1f26447b5f8d937489757a32cc8ff5417a37cdc557424ca1aa11bde",
-          "patchedSha256": "99d92638b4bb5f54a231b4206b8ca6d8a8f0ab824bafaa4200b215e21ddf70fb"
+          "patchedSha256": "e96c2de62427cec2bd60777ce240cd3ad9d1c4e313d1f215083dccb82875da4f"
         }
       ]
     },

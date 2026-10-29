@@ -938,3 +938,16 @@ for(const ok of [false,true])test(`operator UI clear confirms success before unl
   if(ok)assert.match(state[3],/^Selection cleared/)
   else {assert.match(state[3],/failed or is uncertain/);assert.doesNotMatch(state[3],/^Selection cleared/)}
 })
+
+
+test('metadata continuations are declared native-only and rejected as model CUA requests',async t=>{
+ const f=await fixture({officialCua:true,strict:true})
+ if(!f.ctx.get('cuaTaskTargets')){t.skip('requires local.3');return}
+ const require=createRequire(import.meta.url)
+ const {Request,NativeOnlyOperations}=await import(pathToFileURL(require.resolve('@deepseek-ai/dsh-cua/protocol')))
+ for(const [method,params]of [['prepareTaskWindows',{appHandle:'private'}],['bindTaskWindow',{appHandle:'private',windowId:7,targetKey:'opaque'}],['validateTaskWindow',{appHandle:'private',windowId:7}]]){
+  assert.equal(Request.safeParse({method,params}).success,false)
+  assert.equal(NativeOnlyOperations.some(operation=>operation.safeParse({method,params}).success),true)
+ }
+ assert.equal(f.nativeRequests.length,0)
+})

@@ -33,7 +33,7 @@
   "wholePublishedPackagesVerified": 321,
   "local3": {
     "candidateVersion": "0.2.2-alpha.2.codex-cua-local.3",
-    "sourceManifestSha256": "7605c5376c81d07db1582b35799106a6e31aaef75ea57c454521e0bb39e63f21",
+    "sourceManifestSha256": "b7fb4ee549e3e66effdde23610c256da6aa4311c4434e29ab4c13d702b16dea5",
     "wholePublishedPackagesVerified": 321,
     "native": {
       "built": true,
@@ -46,11 +46,11 @@
     },
     "validation": {
       "sourceCheck": "passed; 2384 tests passed, 2 skipped; typecheck, lint, build and package checks passed",
-      "hostComposition": "47 passed on actual installed Host modules with in-memory scripted model, native metadata, and human answers; includes strict owner/no-invocation/non-owner checks and UI clear failure/success",
+      "hostComposition": "48 passed on actual Host modules with scripted model/native/human answers; native-only metadata continuations rejected by the model Request schema",
       "compatibility": "45 passed; exact local.3 added without admitting mixed or future peers",
       "sourceProvenance": "2 pure tests passed; final candidate builder compared all 321 complete original packages to verified locked tarballs",
       "browser": "97 passed in 14 files with isolated Playwright headless browser; initial absent-browser failure preserved",
-      "installedCandidate": "fresh local.3 dependency installation passed with empty npm configs and disabled lifecycle scripts; actual installed-Host composition/full Connect profile regression pending",
+      "installedCandidate": "231bcd5 candidate17: 49 actual-Host/plugin cases and4route cases passed; full installed Connect profile runtime passed. Final native-only protocol contract follow-up candidate18 recheck pending; no live model/GUI acceptance",
       "remoteCiAndIndependentFinalReview": "pending exact commit"
     },
     "desktopAndLiveHumanConsent": "not executed; no application/OS grant, model request, GUI observation/input, service change or parity claim"
