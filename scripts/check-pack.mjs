@@ -1,16 +1,21 @@
 import { spawnSync } from 'node:child_process'
 import { readFile } from 'node:fs/promises'
 import { validateLibArtifactInventory } from './pack-lib-inventory.mjs'
-import { resolveCommandInvocation } from './bounded-command.mjs'
 
-const invocation = resolveCommandInvocation(process.platform === 'win32' ? 'npm.cmd' : 'npm',
-  ['pack', '--dry-run', '--json', '--ignore-scripts'])
-const result = spawnSync(invocation.command, invocation.args, {
+const options = {
   cwd: new URL('..', import.meta.url),
   encoding: 'utf8',
-  windowsVerbatimArguments: invocation.windowsVerbatimArguments,
+  windowsVerbatimArguments: false,
   windowsHide: true,
-})
+}
+// This operation has no dynamic command arguments. Keep its shell text literal
+// rather than routing it through the shared arbitrary-command wrapper.
+const result = process.platform === 'win32'
+  ? spawnSync(process.env.ComSpec ?? process.env.COMSPEC ?? process.env.comspec ?? 'cmd.exe',
+    ['/d', '/s', '/c', '"npm.cmd pack --dry-run --json --ignore-scripts"'], {
+      ...options, windowsVerbatimArguments: true,
+    })
+  : spawnSync('npm', ['pack', '--dry-run', '--json', '--ignore-scripts'], options)
 if (result.error !== undefined) throw result.error
 if (result.status !== 0) {
   process.stderr.write(result.stderr)

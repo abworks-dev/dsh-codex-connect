@@ -223,14 +223,14 @@ export async function checkDshInstall({ pluginManagerCandidate } = {}) {
     const pluginArtifactSha256 = createHash('sha256').update(await readFile(join(tempRoot, manifest.filename))).digest('hex')
     const pluginVersion = manifest.version
 
-    let overrides
+    let resolution
     try {
-      overrides = await resolveExactDshOverrides(dshVersion, readDshRegistryManifest)
+      resolution = await resolveExactDshOverrides(dshVersion, readDshRegistryManifest)
     } catch (error) {
       throw new InfrastructureCheckError(`exact DSH fixture resolution failed: ${error instanceof Error ? error.message : String(error)}`)
     }
     await mkdir(installRoot, { recursive: true })
-    const fixture = exactDshFixtureManifest(overrides)
+    const fixture = exactDshFixtureManifest(resolution)
     if (repair !== undefined) {
       const spec = `file:${repair.tarballPath}`
       fixture.dependencies['@deepseek-ai/dsh-plugin-manager'] = spec

@@ -78,9 +78,10 @@ async function main() {
       console.error(`Task ${version}: resolving exact runtime`)
       const host = join(root, version)
       await mkdir(join(host, 'tests'), { recursive: true })
-      const overrides = await resolveExactDshOverrides(version, readDshRegistryManifest)
+      const resolution = await resolveExactDshOverrides(version, readDshRegistryManifest)
+      const overrides = resolution.overrides
       for (const name of TASK_RUNTIME_PACKAGES) assert.equal(overrides[name], version, `Missing Task root: ${name}`)
-      const metadata = exactDshFixtureManifest(overrides)
+      const metadata = exactDshFixtureManifest(resolution)
       // This gate exercises the task's actual runtime imports. The separate installed-
       // artifact matrix owns full DSH CLI/profile installation. Keep the complete exact
       // override closure, but do not install every unrelated host UI/remote backend here.

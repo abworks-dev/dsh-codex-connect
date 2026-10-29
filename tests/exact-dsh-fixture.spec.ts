@@ -18,21 +18,77 @@ describe('exact DSH install fixture', () => {
       seen.push(name)
       return { name, version, ...dependencies[name] }
     })
-    expect(result).toEqual(Object.fromEntries(Object.keys(dependencies).map(name => [name, version])))
+    const pins = Object.fromEntries(Object.keys(dependencies).map(name => [name, version]))
+    expect(result).toEqual({ overrides: pins, dependencies: pins })
     expect(new Set(seen).size).toBe(seen.length)
   })
 
   it('pins peer-only packages directly in the temporary host without sharing mutable maps', () => {
     const pins = { '@deepseek-ai/dsh': '0.1.5-alpha.1', '@deepseek-ai/dsh-llm': '0.1.5-alpha.1' }
-    const manifest = exactDshFixtureManifest(pins)
+    const manifest = exactDshFixtureManifest({ overrides: pins, dependencies: pins })
     expect(manifest).toEqual({ private: true, dependencies: pins, overrides: pins })
     expect(manifest.dependencies).not.toBe(pins)
     expect(manifest.overrides).not.toBe(manifest.dependencies)
   })
 
   it('rejects mixed versions and unrelated dependency pins in the exact host fixture', () => {
-    expect(() => exactDshFixtureManifest({ '@deepseek-ai/dsh': '0.1.5-alpha.1', '@deepseek-ai/dsh-llm': '0.1.5-rc.2' })).toThrow('consistent')
-    expect(() => exactDshFixtureManifest({ '@deepseek-ai/dsh': '0.1.5-alpha.1', unrelated: '0.1.5-alpha.1' })).toThrow('DSH-only')
+    const dependencies = { '@deepseek-ai/dsh': '0.1.5-alpha.1' }
+    expect(() => exactDshFixtureManifest({ dependencies, overrides: { ...dependencies, '@deepseek-ai/dsh-llm': '0.1.5-rc.2' } })).toThrow('consistent')
+    expect(() => exactDshFixtureManifest({ dependencies, overrides: { ...dependencies, unrelated: '0.1.5-alpha.1' } })).toThrow('DSH-only')
+    expect(() => exactDshFixtureManifest(dependencies)).toThrow('classifications')
+    expect(() => exactDshFixtureManifest({ dependencies: {}, overrides: dependencies })).toThrow('subset')
+    expect(() => exactDshFixtureManifest({ dependencies: { ...dependencies, '@deepseek-ai/dsh-unknown': '0.1.5-alpha.1' }, overrides: dependencies })).toThrow('subset')
+  })
+
+  it('keeps platform-optional subtrees pinned without promoting them to direct roots', async () => {
+    const version = '0.2.2-alpha.2'
+    const graph: Record<string, object> = {
+      '@deepseek-ai/dsh': { dependencies: { '@deepseek-ai/dsh-cua-bundle': version } },
+      '@deepseek-ai/dsh-cua-bundle': { optionalDependencies: { '@deepseek-ai/dsh-experimental-cua-macos': version } },
+      '@deepseek-ai/dsh-experimental-cua-macos': { os: ['darwin'], dependencies: { '@deepseek-ai/dsh-native-helper': '^0.2.2-alpha.1' }, peerDependencies: { '@deepseek-ai/dsh-native-peer': '*' } },
+      '@deepseek-ai/dsh-native-helper': {}, '@deepseek-ai/dsh-native-peer': {},
+    }
+    const resolution = await resolveExactDshOverrides(version, async (name: string) => ({ name, version, ...graph[name] }))
+    const manifest = exactDshFixtureManifest(resolution)
+    expect(manifest.dependencies).toEqual({ '@deepseek-ai/dsh': version, '@deepseek-ai/dsh-cua-bundle': version })
+    expect(manifest.overrides).toEqual(Object.fromEntries(Object.keys(graph).map(name => [name, version])))
+    expect(manifest).not.toHaveProperty('optionalDependencies')
+  })
+
+  it.each([false, true])('required paths upgrade earlier optional packages and descendants regardless of discovery order (%s)', async optionalFirst => {
+    const version = '0.2.2-alpha.2', seen: string[] = []
+    const graph: Record<string, object> = {
+      '@deepseek-ai/dsh': { dependencies: optionalFirst
+        ? { '@deepseek-ai/dsh-optional-route': version, '@deepseek-ai/dsh-route': version }
+        : { '@deepseek-ai/dsh-route': version, '@deepseek-ai/dsh-optional-route': version }, optionalDependencies: { '@deepseek-ai/dsh-optional-only': version } },
+      '@deepseek-ai/dsh-optional-route': { optionalDependencies: { '@deepseek-ai/dsh-shared': version } },
+      '@deepseek-ai/dsh-route': { dependencies: { '@deepseek-ai/dsh-route-deep': version } },
+      '@deepseek-ai/dsh-route-deep': { peerDependencies: { '@deepseek-ai/dsh-shared': version } },
+      '@deepseek-ai/dsh-shared': { dependencies: { '@deepseek-ai/dsh-child': version }, optionalDependencies: { '@deepseek-ai/dsh-optional-only': version } },
+      '@deepseek-ai/dsh-child': { dependencies: { '@deepseek-ai/dsh-shared': version } },
+      '@deepseek-ai/dsh-optional-only': {},
+    }
+    const resolution = await resolveExactDshOverrides(version, async (name: string) => { seen.push(name); return { name, version, ...graph[name] } })
+    expect(resolution.dependencies).toEqual(Object.fromEntries(Object.keys(graph).filter(name => name !== '@deepseek-ai/dsh-optional-only').map(name => [name, version])))
+    expect(resolution.overrides['@deepseek-ai/dsh-optional-only']).toBe(version)
+    expect(seen.indexOf('@deepseek-ai/dsh-shared') < seen.indexOf('@deepseek-ai/dsh-route-deep')).toBe(optionalFirst)
+    expect(new Set(seen).size).toBe(seen.length)
+  })
+
+  it('leaves optional peers uninstalled while pinning them, and honors optional dependency precedence', async () => {
+    const version = '0.2.2-alpha.2'
+    const graph: Record<string, object> = {
+      '@deepseek-ai/dsh': { dependencies: { '@deepseek-ai/dsh-optional': version },
+        peerDependencies: { '@deepseek-ai/dsh-optional': version, '@deepseek-ai/dsh-peer-optional': '*', '@deepseek-ai/dsh-peer-required': '*' },
+        peerDependenciesMeta: { '@deepseek-ai/dsh-peer-optional': { optional: true } },
+        optionalDependencies: { '@deepseek-ai/dsh-optional': version } },
+      '@deepseek-ai/dsh-optional': {},
+      '@deepseek-ai/dsh-peer-optional': { dependencies: { '@deepseek-ai/dsh-peer-child': '*' } },
+      '@deepseek-ai/dsh-peer-child': {}, '@deepseek-ai/dsh-peer-required': {},
+    }
+    const manifest = exactDshFixtureManifest(await resolveExactDshOverrides(version, async (name: string) => ({ name, version, ...graph[name] })))
+    expect(manifest.dependencies).toEqual({ '@deepseek-ai/dsh': version, '@deepseek-ai/dsh-peer-required': version })
+    expect(Object.keys(manifest.overrides)).toHaveLength(5)
   })
 
   it('rejects a newer manifest instead of silently testing the wrong host', async () => {
