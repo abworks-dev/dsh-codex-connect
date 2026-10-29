@@ -5,35 +5,40 @@
 --- a/lib/client.js
 +++ b/lib/client.js
 @@ -256,0 +257 @@
-+"cuaAccess/discoverTaskTargets": {service:"cuaAccess",description:"Operator-only bounded target selection; no grant or model tool.",invocation:{kind:"direct"},parameters:[{name:'sessionId', source:"json", wire:'sessionId', codec:{mode:"strict",typeSymbol:"string",create:()=>zod.z.string().min(1).max(1024)}, strictCodec:{mode:"strict",typeSymbol:"string",create:()=>zod.z.string().min(1).max(1024)}},{name:'application', source:"json", wire:'application', codec:{mode:"strict",typeSymbol:"string",create:()=>zod.z.string().min(1).max(1024)}, strictCodec:{mode:"strict",typeSymbol:"string",create:()=>zod.z.string().min(1).max(1024)}}],result:{mode:"strict",typeSymbol:"localTaskTarget",create:()=>zod.z.record(zod.z.string(),zod.z.json())}},"cuaAccess/selectTaskTarget": {service:"cuaAccess",description:"Operator-only bounded target selection; no grant or model tool.",invocation:{kind:"direct"},parameters:[{name:'sessionId', source:"json", wire:'sessionId', codec:{mode:"strict",typeSymbol:"string",create:()=>zod.z.string().min(1).max(1024)}, strictCodec:{mode:"strict",typeSymbol:"string",create:()=>zod.z.string().min(1).max(1024)}},{name:'candidateId', source:"json", wire:'candidateId', codec:{mode:"strict",typeSymbol:"string",create:()=>zod.z.string().min(1).max(1024)}, strictCodec:{mode:"strict",typeSymbol:"string",create:()=>zod.z.string().min(1).max(1024)}}],result:{mode:"strict",typeSymbol:"localTaskTarget",create:()=>zod.z.record(zod.z.string(),zod.z.json())}},"cuaAccess/clearTaskTargets": {service:"cuaAccess",description:"Operator-only bounded target selection; no grant or model tool.",invocation:{kind:"direct"},parameters:[{name:'sessionId', source:"json", wire:'sessionId', codec:{mode:"strict",typeSymbol:"string",create:()=>zod.z.string().min(1).max(1024)}, strictCodec:{mode:"strict",typeSymbol:"string",create:()=>zod.z.string().min(1).max(1024)}}],result:{mode:"strict",typeSymbol:"localTaskTarget",create:()=>zod.z.void()}},
-@@ -1051,0 +1053,21 @@
++"cuaAccess/discoverTaskApplications": {service:"cuaAccess",description:"Operator-only bounded target selection; no grant or model tool.",invocation:{kind:"direct"},parameters:[{name:'sessionId',source:"json",wire:'sessionId',codec:{mode:"strict",typeSymbol:"string",create:()=>zod.z.string().min(1).max(1024)},strictCodec:{mode:"strict",typeSymbol:"string",create:()=>zod.z.string().min(1).max(1024)}},{name:'bundleId',source:"json",wire:'bundleId',codec:{mode:"strict",typeSymbol:"string",create:()=>zod.z.string().min(1).max(1024)},strictCodec:{mode:"strict",typeSymbol:"string",create:()=>zod.z.string().min(1).max(1024)}}],result:{mode:"strict",typeSymbol:"localTaskTarget",create:()=>zod.z.object({expiresAt:zod.z.number().int().positive(),applications:zod.z.array(zod.z.object({id:zod.z.string(),pid:zod.z.number().int().positive(),name:zod.z.string().max(1024),bundleId:zod.z.string().max(255)}).strict()).max(16)}).strict()}},"cuaAccess/selectTaskApplication": {service:"cuaAccess",description:"Operator-only bounded target selection; no grant or model tool.",invocation:{kind:"direct"},parameters:[{name:'sessionId',source:"json",wire:'sessionId',codec:{mode:"strict",typeSymbol:"string",create:()=>zod.z.string().min(1).max(1024)},strictCodec:{mode:"strict",typeSymbol:"string",create:()=>zod.z.string().min(1).max(1024)}},{name:'candidateId',source:"json",wire:'candidateId',codec:{mode:"strict",typeSymbol:"string",create:()=>zod.z.string().min(1).max(1024)},strictCodec:{mode:"strict",typeSymbol:"string",create:()=>zod.z.string().min(1).max(1024)}}],result:{mode:"strict",typeSymbol:"localTaskTarget",create:()=>zod.z.record(zod.z.string(),zod.z.json())}},"cuaAccess/discoverTaskTargets": {service:"cuaAccess",description:"Operator-only bounded target selection; no grant or model tool.",invocation:{kind:"direct"},parameters:[{name:'sessionId',source:"json",wire:'sessionId',codec:{mode:"strict",typeSymbol:"string",create:()=>zod.z.string().min(1).max(1024)},strictCodec:{mode:"strict",typeSymbol:"string",create:()=>zod.z.string().min(1).max(1024)}},{name:'application',source:"json",wire:'application',codec:{mode:"strict",typeSymbol:"string",create:()=>zod.z.string().min(1).max(1024)},strictCodec:{mode:"strict",typeSymbol:"string",create:()=>zod.z.string().min(1).max(1024)}}],result:{mode:"strict",typeSymbol:"localTaskTarget",create:()=>zod.z.record(zod.z.string(),zod.z.json())}},"cuaAccess/selectTaskTarget": {service:"cuaAccess",description:"Operator-only bounded target selection; no grant or model tool.",invocation:{kind:"direct"},parameters:[{name:'sessionId',source:"json",wire:'sessionId',codec:{mode:"strict",typeSymbol:"string",create:()=>zod.z.string().min(1).max(1024)},strictCodec:{mode:"strict",typeSymbol:"string",create:()=>zod.z.string().min(1).max(1024)}},{name:'candidateId',source:"json",wire:'candidateId',codec:{mode:"strict",typeSymbol:"string",create:()=>zod.z.string().min(1).max(1024)},strictCodec:{mode:"strict",typeSymbol:"string",create:()=>zod.z.string().min(1).max(1024)}}],result:{mode:"strict",typeSymbol:"localTaskTarget",create:()=>zod.z.record(zod.z.string(),zod.z.json())}},"cuaAccess/clearTaskTargets": {service:"cuaAccess",description:"Operator-only bounded target selection; no grant or model tool.",invocation:{kind:"direct"},parameters:[{name:'sessionId',source:"json",wire:'sessionId',codec:{mode:"strict",typeSymbol:"string",create:()=>zod.z.string().min(1).max(1024)},strictCodec:{mode:"strict",typeSymbol:"string",create:()=>zod.z.string().min(1).max(1024)}}],result:{mode:"strict",typeSymbol:"localTaskTarget",create:()=>zod.z.void()}},
+@@ -1051,0 +1053,26 @@
 +        // Operator UI only. It neither invokes a model nor answers the task approval card.
-+        function TaskTargetPanel({remote}) {
++        function TaskTargetPanel({remote,useSessions}) {
 +            const [sessionId, setSessionId] = react.useState("");
 +            const [application, setApplication] = react.useState("");
 +            const [targets, setTargets] = react.useState([]);
 +            const [status, setStatus] = react.useState("");
 +            const [busy, setBusy] = react.useState(false);
 +            const [selected, setSelected] = react.useState(false);
++            const [applications,setApplications] = react.useState([]);
++            const current = useSessions?.(state=>Object.values(state.byId).find(row=>(row.retainedBy.mainView??0)>0)?.id);
++            const resetCandidates = () => {setTargets([]);setApplications([]);setStatus("");};
 +            const run = async operation => { setBusy(true); setStatus(""); try { const response = await operation(); if (!response.ok) throw response.error; return {ok:true,value:response.value}; } catch { setStatus("Operation failed or is uncertain. No successful clear was confirmed."); return {ok:false}; } finally {setBusy(false);} };
 +            return react_jsx_runtime.jsxs("section", {"aria-label":"Computer Use task window", children:[
 +                react_jsx_runtime.jsx("h3", {children:"Task window — selection grants no access"}),
-+                react_jsx_runtime.jsx("p", {children:"For this conversation only, choose an already-running application's window. The conversation will ask separately before the worker can observe or control it. Selection expires after two minutes."}),
-+                react_jsx_runtime.jsxs("label", {children:["Conversation ID (from its URL)",react_jsx_runtime.jsx("input", {value:sessionId,disabled:busy||selected,onChange:e=>{setSessionId(e.target.value);setTargets([]);},autoComplete:"off"})]}),
-+                react_jsx_runtime.jsxs("label", {children:["Exact application (bundle ID or PID)",react_jsx_runtime.jsx("input", {value:application,disabled:busy||selected,onChange:e=>{setApplication(e.target.value);setTargets([]);},autoComplete:"off"})]}),
-+                react_jsx_runtime.jsx("button", {disabled:busy||selected||!sessionId||!application,onClick:async()=>{const result=await run(()=>remote.discoverTaskTargets(sessionId,application));if(result.ok){setTargets(result.value.targets);setStatus(result.value.targets.length ? "Select one window. No control permission yet." : "No matching windows. No access granted.");}},children:"Find windows"}),
-+                ...targets.map(target=>react_jsx_runtime.jsxs("div", {children:[react_jsx_runtime.jsx("span",{children:`${target.application}: ${target.title} (window ${target.windowId}) `}),react_jsx_runtime.jsx("button",{disabled:busy,onClick:async()=>{const result=await run(()=>remote.selectTaskTarget(sessionId,target.id));if(result.ok){setSelected(true);setTargets([]);setStatus(`Selected window ${result.value.windowId} until ${new Date(result.value.expiresAt).toLocaleTimeString()}. Return to that conversation and request the task; approval is still required.`);}},children:"Select this window"})]},target.id)),
-+                react_jsx_runtime.jsx("button",{disabled:busy||!sessionId,onClick:async()=>{const result=await run(()=>remote.clearTaskTargets(sessionId));if(result.ok){setTargets([]);setSelected(false);setStatus("Selection cleared. Use Stop in the conversation to cancel any active task.");}},children:"Clear selection"}),
++                react_jsx_runtime.jsx("p", {children:"For this conversation only, choose one instance of an exact application bundle, then its window. No page content or control permission is granted. Selection expires after two minutes; the conversation must ask for task approval."}),
++                react_jsx_runtime.jsxs("label", {children:["Conversation ID",react_jsx_runtime.jsx("input", {value:sessionId,disabled:busy||selected,onChange:e=>{setSessionId(e.target.value);resetCandidates();},autoComplete:"off"})]}),
++                react_jsx_runtime.jsx("button",{disabled:busy||selected||!current,onClick:()=>{setSessionId(current);resetCandidates();},children:"Use current conversation"}),
++                react_jsx_runtime.jsxs("label", {children:["Exact application bundle ID",react_jsx_runtime.jsx("input", {value:application,disabled:busy||selected,onChange:e=>{setApplication(e.target.value);resetCandidates();},autoComplete:"off"})]}),
++                react_jsx_runtime.jsx("button", {disabled:busy||selected||!sessionId||!application,onClick:async()=>{const result=await run(()=>remote.discoverTaskApplications(sessionId,application));if(result.ok){setApplications(result.value.applications);setTargets([]);setStatus(result.value.applications.length ? "Choose an application instance, then its window. No control permission yet." : "No matching running instances. No access granted.");}},children:"Find application instances"}),
++                ...(applications??[]).map(app=>react_jsx_runtime.jsxs("div",{children:[react_jsx_runtime.jsx("span",{children:`${app.name} (${app.bundleId}, PID ${app.pid}) `}),react_jsx_runtime.jsx("button",{disabled:busy||selected,onClick:async()=>{const result=await run(()=>remote.selectTaskApplication(sessionId,app.id));if(result.ok){setTargets(result.value.targets);setStatus(result.value.targets.length ? "Select one window. No control permission yet." : "No matching windows in this instance. Choose another instance or clear selection.");}},children:"Show this instance's windows"})]},app.id)),
++                ...targets.map(target=>react_jsx_runtime.jsxs("div", {children:[react_jsx_runtime.jsx("span",{children:`${target.application}: ${target.title} (PID ${target.pid}, window ${target.windowId}) `}),react_jsx_runtime.jsx("button",{disabled:busy||selected,onClick:async()=>{const result=await run(()=>remote.selectTaskTarget(sessionId,target.id));if(result.ok){setSelected(true);setTargets([]);setApplications([]);setStatus(`Selected window ${result.value.windowId} until ${new Date(result.value.expiresAt).toLocaleTimeString()}. Return to that conversation and request the task; approval is still required.`);}},children:"Select this window"})]},target.id)),
++                react_jsx_runtime.jsx("button",{disabled:busy||!sessionId,onClick:async()=>{const result=await run(()=>remote.clearTaskTargets(sessionId));if(result.ok){setTargets([]);setApplications([]);setSelected(false);setStatus("Selection cleared. Use Stop in the conversation to cancel any active task.");}},children:"Clear selection"}),
 +                react_jsx_runtime.jsx("p",{role:"status",children:status})
 +            ]});
 +        }
 +
-@@ -1715 +1737 @@
+@@ -1715 +1742 @@
 -				}, PermissionPanel));
-+				}, props => react_jsx_runtime.jsxs(react.Fragment, {children:[react_jsx_runtime.jsx(TaskTargetPanel,{remote:ctx.remote.cuaAccess}),react_jsx_runtime.jsx(PermissionPanel,props)]})));
++				}, props => react_jsx_runtime.jsxs(react.Fragment, {children:[react_jsx_runtime.jsx(TaskTargetPanel,{remote:ctx.remote.cuaAccess,useSessions:props.useSessions}),react_jsx_runtime.jsx(PermissionPanel,props)]})));
 --- a/lib/index.js
 +++ b/lib/index.js
-@@ -16,0 +17,94 @@
+@@ -16,0 +17,146 @@
 +/** Operator RPC only. Candidate selection never authorizes native observations or input. */
 +class TaskTargets {
 +  version = 1;
@@ -51,14 +56,11 @@
 +    if (row.closing) return row.closing;
 +    row.closed = true;
 +    clearTimeout(row.timer); row.controller.abort();
-+    // Keep the invalidated row as a tombstone until native exit is confirmed.
-+    // A rejected cleanup is the same rejected result for every later clear.
++    // Retain the invalidated row until native exit is confirmed, including failures.
 +    return row.closing = Promise.resolve().then(async () => {
 +      if (!row.claimed) await row.client.dispose();
 +      if (this.rows.get(row.root) === row) this.rows.delete(row.root);
 +      const release = row.release; row.release = undefined;
-+      // The root effect calls close too; detach bookkeeping only after drain,
-+      // without awaiting a release that would await this same closing promise.
 +      if (release) void Promise.resolve().then(release).catch(() => {});
 +    });
 +  }
@@ -67,36 +69,83 @@
 +    const next = previous.catch(() => {}).then(operation); this.serial.set(root, next);
 +    try { return await next; } finally { if (this.serial.get(root) === next) this.serial.delete(root); }
 +  }
-+  async discover(sessionId, selector) {
-+    const root = this.root(sessionId);
-+    if (typeof selector !== 'string' || !selector.trim() || selector.length > 1024) throw this.error('CUA_TARGET_INVALID_SELECTOR');
-+    return this.inOrder(root, async () => {
-+      this.root(sessionId);
-+      const previous = this.rows.get(root); if (previous) await this.close(previous);
-+      if ([...this.rows.values()].some(row => row.closed)) throw this.error('CUA_TARGET_CLEANUP_UNCERTAIN');
-+      const row = {root, client: this.createClient(), controller: new AbortController(), expiresAt: Date.now() + 120000, selected: undefined, candidates: [], claimed: false};
-+      this.rows.set(root, row);
-+      row.timer = setTimeout(() => { void this.close(row).catch(() => {}); }, 120000);
-+      row.release = root.ctx.effect(() => () => this.close(row), 'cua-task-targets.root');
-+      try {
-+        // Native getApp prepares identity only. Its handle remains provider-private.
-+        const app = await row.client.request('getApp', {selector}, row.controller.signal);
-+        if (!Number.isSafeInteger(app.pid) || app.pid <= 0 || typeof app.appHandle !== 'string' || !app.authorization) throw this.error('CUA_TARGET_RUNNING_APP_REQUIRED');
-+        row.app = app;
-+        const windows = await row.client.request('prepareTaskWindows', {appHandle: app.appHandle}, row.controller.signal);
-+        if (!Array.isArray(windows) || windows.length > 100) throw this.error('CUA_TARGET_METADATA_INVALID');
-+        row.candidates = windows.map(window => {
-+          if (window.pid !== app.pid || !Number.isSafeInteger(window.windowId) || window.windowId <= 0 || typeof window.title !== 'string' || typeof window.targetKey !== 'string') throw this.error('CUA_TARGET_METADATA_INVALID');
-+          return Object.freeze({id: randomUUID(), windowId: window.windowId, pid: app.pid, application: app.name, title: window.title.slice(0,1024), bounds: window.bounds, isOnScreen: window.isOnScreen, targetKey: window.targetKey});
-+        });
-+        this.assert(row);
-+        return {expiresAt: row.expiresAt, targets: row.candidates.map(({targetKey, ...target}) => target)};
-+      } catch (error) { await this.close(row); throw error; }
-+    });
++  async start(root) {
++    this.root(root.id);
++    const previous = this.rows.get(root); if (previous) await this.close(previous);
++    if ([...this.rows.values()].some(row => row.closed)) throw this.error('CUA_TARGET_CLEANUP_UNCERTAIN');
++    const row = {root, client: this.createClient(), controller: new AbortController(), expiresAt: Date.now() + 120000, selected: undefined, candidates: [], applications: [], claimed: false};
++    this.rows.set(root, row);
++    row.timer = setTimeout(() => { void this.close(row).catch(() => {}); }, 120000);
++    row.release = root.ctx.effect(() => () => this.close(row), 'cua-task-targets.root');
++    return row;
 +  }
 +  assert(row) {
 +    if (!row || row.closed || this.rows.get(row.root) !== row || row.claimed || row.expiresAt <= Date.now() || this.root(row.root.id) !== row.root) throw this.error('CUA_TARGET_CLOSED');
 +    row.controller.signal.throwIfAborted();
++  }
++  prepared(app, pid, bundleId) {
++    if (!Number.isSafeInteger(app?.pid) || app.pid <= 0 || typeof app.appHandle !== 'string' || !app.appHandle || !app.authorization || pid !== undefined && app.pid !== pid || bundleId !== undefined && app.bundleId !== bundleId) throw this.error('CUA_TARGET_RUNNING_APP_REQUIRED');
++    return app;
++  }
++  async windows(row) {
++    this.assert(row);
++    // The retained handle verifies process start identity before AX window metadata.
++    const windows = await row.client.request('prepareTaskWindows', {appHandle: row.app.appHandle}, row.controller.signal);
++    if (!Array.isArray(windows) || windows.length > 100) throw this.error('CUA_TARGET_METADATA_INVALID');
++    row.candidates = windows.map(window => {
++      if (window.pid !== row.app.pid || !Number.isSafeInteger(window.windowId) || window.windowId <= 0 || typeof window.title !== 'string' || typeof window.targetKey !== 'string') throw this.error('CUA_TARGET_METADATA_INVALID');
++      return Object.freeze({id: randomUUID(), windowId: window.windowId, pid: row.app.pid, application: row.app.name, title: window.title.slice(0,1024), bounds: window.bounds, isOnScreen: window.isOnScreen, targetKey: window.targetKey});
++    });
++    this.assert(row);
++    return {expiresAt: row.expiresAt, targets: row.candidates.map(({targetKey, ...target}) => target)};
++  }
++  async discoverApplications(sessionId, bundleId) {
++    const root = this.root(sessionId);
++    if (typeof bundleId !== 'string' || bundleId.length > 255 || !/^[A-Za-z0-9][A-Za-z0-9-]*(?:\.[A-Za-z0-9][A-Za-z0-9-]*)+$/.test(bundleId)) throw this.error('CUA_TARGET_EXACT_BUNDLE_REQUIRED');
++    return this.inOrder(root, async () => {
++      const row = await this.start(root);
++      try {
++        const catalog = await row.client.request('listApps', {}, row.controller.signal);
++        if (!Array.isArray(catalog) || catalog.length > 1000) throw this.error('CUA_TARGET_METADATA_INVALID');
++        // Never send the global catalog to a model, UI, log or persistent store.
++        const matching = catalog.filter(app => app?.bundleId === bundleId);
++        if (matching.length > 16 || new Set(matching.map(app => app.pid)).size !== matching.length) throw this.error('CUA_TARGET_METADATA_INVALID');
++        for (const app of matching) {
++          this.assert(row);
++          if (!Number.isSafeInteger(app.pid) || app.pid <= 0) throw this.error('CUA_TARGET_METADATA_INVALID');
++          // The native handle privately retains the exact process start identity.
++          const prepared = this.prepared(await row.client.request('getApp', {selector: String(app.pid)}, row.controller.signal), app.pid, bundleId);
++          if (typeof prepared.name !== 'string' || !prepared.name || prepared.name.length > 1024) throw this.error('CUA_TARGET_METADATA_INVALID');
++          row.applications.push(Object.freeze({id: randomUUID(), pid: app.pid, name: prepared.name, bundleId, app: prepared}));
++        }
++        this.assert(row);
++        return {expiresAt: row.expiresAt, applications: row.applications.map(({app, ...candidate}) => candidate)};
++      } catch (error) { await this.close(row); throw error; }
++    });
++  }
++  async selectApplication(sessionId, id) {
++    const root = this.root(sessionId);
++    return this.inOrder(root, async () => {
++      const row = this.rows.get(root); this.assert(row);
++      const candidate = row.applications.find(candidate => candidate.id === id);
++      if (!candidate) throw this.error('CUA_TARGET_NOT_FOUND');
++      try {
++        if (row.selected) throw this.error('CUA_TARGET_ALREADY_SELECTED');
++        row.app = candidate.app; row.candidates = [];
++        return await this.windows(row);
++      } catch (error) { await this.close(row); throw error; }
++    });
++  }
++  async discover(sessionId, selector) {
++    const root = this.root(sessionId);
++    if (typeof selector !== 'string' || !selector.trim() || selector.length > 1024) throw this.error('CUA_TARGET_INVALID_SELECTOR');
++    return this.inOrder(root, async () => {
++      const row = await this.start(root);
++      try {
++        row.app = this.prepared(await row.client.request('getApp', {selector}, row.controller.signal));
++        return await this.windows(row);
++      } catch (error) { await this.close(row); throw error; }
++    });
 +  }
 +  async select(sessionId, id) {
 +    const root = this.root(sessionId);
@@ -122,17 +171,25 @@
 +    const target = this.target(root);
 +    if (target.application !== application || target.windowId !== windowId || target.targetSelectionId !== selectionId || this.serial.has(root)) throw this.error('CUA_TARGET_MISMATCH');
 +    row.claimed = true; clearTimeout(row.timer); this.rows.delete(root);
-+    // Ownership moves exactly once to the real child's normal CUA pipeline.
 +    return {client: row.client, app: row.app, selected: row.selected, expiresAt: row.expiresAt, release: row.release};
 +  }
-+  async clear(sessionId) { const root = this.root(sessionId); return this.inOrder(root, async () => { const row = this.rows.get(root); if (row) await this.close(row); }); }
++  async clear(sessionId) {
++    const root = this.root(sessionId), row = this.rows.get(root);
++    // Abort a pending native metadata read immediately; serialize its confirmed drain.
++    const closing = row ? this.close(row) : undefined;
++    if (closing) void closing.catch(() => {});
++    return this.inOrder(root, async () => {
++      await closing;
++      const current = this.rows.get(root); if (current && current !== row) await this.close(current);
++    });
++  }
 +}
 +
-@@ -550,0 +645,3 @@
+@@ -550,0 +697,3 @@
 +	tasks = /* @__PURE__ */ new Map();
 +	taskOwners = /* @__PURE__ */ new WeakMap();
 +	taskRefusals = /* @__PURE__ */ new WeakMap();
-@@ -561,0 +659,138 @@
+@@ -561,0 +711,138 @@
 +	/** Register an owned task, without granting application access. */
 +	beginTask(input) {
 +		const keys = ["parent", "child", "application", "windowId", "goal", "expiresAt", "signal"];
@@ -271,15 +328,15 @@
 +			// to ordinary saved application grants after its task has ended.
 +		});
 +	}
-@@ -569 +804 @@
+@@ -569 +856 @@
 -			await Promise.allSettled([this.options.store.drain(), ...[...this.active].map((operation) => operation.done.promise)]);
 +			await Promise.allSettled([...[...this.tasks.values()].map((task) => this.endTask(task)), this.options.store.drain(), ...[...this.active].map((operation) => operation.done.promise)]);
-@@ -647 +882,3 @@
+@@ -647 +934,3 @@
 -	async select(agent, client, handle, identity, signal, icon) {
 +	async select(agent, client, handle, identity, signal, icon, prepared) {
 +		const task = this.taskFor(agent);
 +		if (task) return this.withOperation(agent, client, identity, AbortSignal.any([signal, task.signal]), (lifetime) => this.selectInOrder(agent, identity.id, () => this.selectTask(task, client, handle, identity, prepared, lifetime, icon)));
-@@ -774,0 +1012,12 @@
+@@ -774,0 +1064,12 @@
 +		if (selected.scope === "task") {
 +			const task = this.tasks.get(selected.taskId);
 +			this.assertTask(task);
@@ -292,69 +349,71 @@
 +				return this.withOperation(state.agent, client, selected.identity, lifetime, dispatch);
 +			});
 +		}
-@@ -833,0 +1083,2 @@
+@@ -833,0 +1135,2 @@
 +		const task = this.taskFor(agent);
 +		if (task) void this.endTask(task).catch(() => {});
-@@ -864,0 +1116,4 @@
+@@ -864,0 +1168,4 @@
 +		for (const task of this.tasks.values()) if (task.identity?.id === id && (agent === void 0 || task.child.id === agent.id)) {
 +			this.taskRefusals.set(task.parent, task.userInput);
 +			void this.endTask(task).catch(() => {});
 +		}
-@@ -1088 +1343,4 @@
+@@ -1088 +1395,4 @@
 -operation("launchApp", app), operation("permissionStatus", {}), operation("applicationIcons", { paths: z.array(z.string().min(1)) }), operation("requestPermission", { permission: z.enum(["accessibility", "screenRecording"]) }), operation("openPermissionSettings", { permission: z.enum(["accessibility", "screenRecording"]) });
 +operation("prepareTaskWindows", app),
 +    operation("bindTaskWindow", {...app, windowId:id, targetKey:z.string().min(1)}),
 +    operation("validateTaskWindow", {...app, windowId:id}),
 +    operation("launchApp", app), operation("permissionStatus", {}), operation("applicationIcons", { paths: z.array(z.string().min(1)) }), operation("requestPermission", { permission: z.enum(["accessibility", "screenRecording"]) }), operation("openPermissionSettings", { permission: z.enum(["accessibility", "screenRecording"]) });
-@@ -1120,0 +1379 @@
+@@ -1120,0 +1431 @@
 +	windowScope: z.enum(["strict-window", "application"]).optional(),
-@@ -1258,0 +1518 @@
-+            for (const name of ["discoverTaskTargets", "selectTaskTarget", "clearTaskTargets"]) __esDecorate(this, null, [Remote], { kind: "method", name, static: false, private: false, access: { has: obj => name in obj, get: obj => obj[name] }, metadata: _metadata }, null, _instanceExtraInitializers);
-@@ -1379,0 +1640,4 @@
+@@ -1258,0 +1570 @@
++            for (const name of ["discoverTaskApplications", "selectTaskApplication", "discoverTaskTargets", "selectTaskTarget", "clearTaskTargets"]) __esDecorate(this, null, [Remote], { kind: "method", name, static: false, private: false, access: { has: obj => name in obj, get: obj => obj[name] }, metadata: _metadata }, null, _instanceExtraInitializers);
+@@ -1379,0 +1692,6 @@
 +        assertTargetOperator() { if (this.ctx.invocation?.peer.principal.kind !== "owner") throw new NativeError("CUA_TARGET_OPERATOR_REQUIRED", "Target discovery is restricted to the authenticated local operator"); }
++        discoverTaskApplications(sessionId, bundleId) { this.assertTargetOperator(); return this.ctx.cuaTaskTargets.discoverApplications(sessionId, bundleId); }
++        selectTaskApplication(sessionId, candidateId) { this.assertTargetOperator(); return this.ctx.cuaTaskTargets.selectApplication(sessionId, candidateId); }
 +        discoverTaskTargets(sessionId, application) { this.assertTargetOperator(); return this.ctx.cuaTaskTargets.discover(sessionId, application); }
 +        selectTaskTarget(sessionId, candidateId) { this.assertTargetOperator(); return this.ctx.cuaTaskTargets.select(sessionId, candidateId); }
 +        clearTaskTargets(sessionId) { this.assertTargetOperator(); return this.ctx.cuaTaskTargets.clear(sessionId); }
-@@ -1486,0 +1751,4 @@
+@@ -1486,0 +1805,4 @@
 +		beginTask: policy.beginTask.bind(policy),
 +		taskFor: policy.taskFor.bind(policy),
 +		checkTaskRequest: policy.checkTaskRequest.bind(policy),
 +		observeTask: policy.observeTask.bind(policy),
-@@ -1577,0 +1846 @@
+@@ -1577,0 +1900 @@
 +	strictWindowScope: Schema.boolean().default(false),
-@@ -1645,0 +1915 @@
+@@ -1645,0 +1969 @@
 +	ctx.provide("cuaWindowScope", Object.freeze({ version: 1, strictWindowScope: config.strictWindowScope === true }));
-@@ -1668,0 +1939,2 @@
+@@ -1668,0 +1993,2 @@
 +    if (config.strictWindowScope === true) ctx.provide("cuaTaskTargets", new TaskTargets(ctx, () => new NativeClient(ctx, native, backend.createChannel), code => new NativeError(code, "Operator target selection is missing, stale or invalid")));
 +	if (config.strictWindowScope === true) ctx.provide("cuaTaskApproval", Object.freeze({ version: 1, begin: (input) => access.beginTask(input) }));
-@@ -1720,0 +1993 @@
+@@ -1720,0 +2047 @@
 +			access.checkTaskRequest(execution.agent, request);
-@@ -1739 +2012,2 @@
+@@ -1739 +2066,2 @@
 -				maxDepth: config.maxDepth
 +				maxDepth: config.maxDepth,
 +				strictWindowScope: config.strictWindowScope
-@@ -1748,0 +2023 @@
+@@ -1748,0 +2077 @@
 +				access.observeTask(agent, request, screenshot);
-@@ -1781 +2056 @@
+@@ -1781 +2110 @@
 -				await access.select(agent, client, prepared.appHandle, authorization, signal, applicationIcon);
 +				await access.select(agent, client, prepared.appHandle, authorization, signal, applicationIcon, prepared);
-@@ -1793,0 +2069 @@
+@@ -1793,0 +2123 @@
 +				access.observeTask(agent, request, state);
-@@ -1813,0 +2090 @@
+@@ -1813,0 +2144 @@
 +				access.checkTaskRequest(agent, request);
-@@ -1820 +2097,2 @@
+@@ -1820 +2151,2 @@
 -					owner.signal
 +					owner.signal,
 +					...access.taskFor(agent) ? [access.taskFor(agent).signal] : []
-@@ -1827 +2105,2 @@
+@@ -1827 +2159,2 @@
 -					let client = clients.get(agent);
 +                    let client = clients.get(agent) ?? access.taskFor(agent)?.nativeClient;
 +                    if (client && !clients.has(agent)) { clients.set(agent, client); owner.coordinates = new CuaCoordinates(); }
-@@ -1828,0 +2108 @@
+@@ -1828,0 +2162 @@
 +					if (access.taskFor(agent)?.nativeClient?.disposed) throw new NativeError("CUA_TASK_CLOSED", "Selected native target connection expired");
-@@ -1836,0 +2117 @@
+@@ -1836,0 +2171 @@
 +					access.taskFor(agent)?.clients.add(nativeClient);
-@@ -1916,0 +2198,2 @@
+@@ -1916,0 +2252,2 @@
 +
 +export const STRICT_WINDOW_SCOPE_VERSION = 1;
 --- a/lib/protocol.js
@@ -374,22 +433,29 @@
 --- a/lib/typert.host.js
 +++ b/lib/typert.host.js
 @@ -94,0 +95 @@
-+"cuaAccess/discoverTaskTargets": {service:"cuaAccess",description:"Operator-only bounded target selection; no grant or model tool.",invocation:{kind:"direct"},parameters:[{name:'sessionId', source:"json", wire:'sessionId', codec:{mode:"strict",typeSymbol:"string",create:()=>z.string().min(1).max(1024)}, strictCodec:{mode:"strict",typeSymbol:"string",create:()=>z.string().min(1).max(1024)}},{name:'application', source:"json", wire:'application', codec:{mode:"strict",typeSymbol:"string",create:()=>z.string().min(1).max(1024)}, strictCodec:{mode:"strict",typeSymbol:"string",create:()=>z.string().min(1).max(1024)}}],result:{mode:"strict",typeSymbol:"localTaskTarget",create:()=>z.record(z.string(),z.json())}},"cuaAccess/selectTaskTarget": {service:"cuaAccess",description:"Operator-only bounded target selection; no grant or model tool.",invocation:{kind:"direct"},parameters:[{name:'sessionId', source:"json", wire:'sessionId', codec:{mode:"strict",typeSymbol:"string",create:()=>z.string().min(1).max(1024)}, strictCodec:{mode:"strict",typeSymbol:"string",create:()=>z.string().min(1).max(1024)}},{name:'candidateId', source:"json", wire:'candidateId', codec:{mode:"strict",typeSymbol:"string",create:()=>z.string().min(1).max(1024)}, strictCodec:{mode:"strict",typeSymbol:"string",create:()=>z.string().min(1).max(1024)}}],result:{mode:"strict",typeSymbol:"localTaskTarget",create:()=>z.record(z.string(),z.json())}},"cuaAccess/clearTaskTargets": {service:"cuaAccess",description:"Operator-only bounded target selection; no grant or model tool.",invocation:{kind:"direct"},parameters:[{name:'sessionId', source:"json", wire:'sessionId', codec:{mode:"strict",typeSymbol:"string",create:()=>z.string().min(1).max(1024)}, strictCodec:{mode:"strict",typeSymbol:"string",create:()=>z.string().min(1).max(1024)}}],result:{mode:"strict",typeSymbol:"localTaskTarget",create:()=>z.void()}},
-@@ -316,0 +318 @@
++"cuaAccess/discoverTaskApplications": {service:"cuaAccess",description:"Operator-only bounded target selection; no grant or model tool.",invocation:{kind:"direct"},parameters:[{name:'sessionId',source:"json",wire:'sessionId',codec:{mode:"strict",typeSymbol:"string",create:()=>z.string().min(1).max(1024)},strictCodec:{mode:"strict",typeSymbol:"string",create:()=>z.string().min(1).max(1024)}},{name:'bundleId',source:"json",wire:'bundleId',codec:{mode:"strict",typeSymbol:"string",create:()=>z.string().min(1).max(1024)},strictCodec:{mode:"strict",typeSymbol:"string",create:()=>z.string().min(1).max(1024)}}],result:{mode:"strict",typeSymbol:"localTaskTarget",create:()=>z.object({expiresAt:z.number().int().positive(),applications:z.array(z.object({id:z.string(),pid:z.number().int().positive(),name:z.string().max(1024),bundleId:z.string().max(255)}).strict()).max(16)}).strict()}},"cuaAccess/selectTaskApplication": {service:"cuaAccess",description:"Operator-only bounded target selection; no grant or model tool.",invocation:{kind:"direct"},parameters:[{name:'sessionId',source:"json",wire:'sessionId',codec:{mode:"strict",typeSymbol:"string",create:()=>z.string().min(1).max(1024)},strictCodec:{mode:"strict",typeSymbol:"string",create:()=>z.string().min(1).max(1024)}},{name:'candidateId',source:"json",wire:'candidateId',codec:{mode:"strict",typeSymbol:"string",create:()=>z.string().min(1).max(1024)},strictCodec:{mode:"strict",typeSymbol:"string",create:()=>z.string().min(1).max(1024)}}],result:{mode:"strict",typeSymbol:"localTaskTarget",create:()=>z.record(z.string(),z.json())}},"cuaAccess/discoverTaskTargets": {service:"cuaAccess",description:"Operator-only bounded target selection; no grant or model tool.",invocation:{kind:"direct"},parameters:[{name:'sessionId',source:"json",wire:'sessionId',codec:{mode:"strict",typeSymbol:"string",create:()=>z.string().min(1).max(1024)},strictCodec:{mode:"strict",typeSymbol:"string",create:()=>z.string().min(1).max(1024)}},{name:'application',source:"json",wire:'application',codec:{mode:"strict",typeSymbol:"string",create:()=>z.string().min(1).max(1024)},strictCodec:{mode:"strict",typeSymbol:"string",create:()=>z.string().min(1).max(1024)}}],result:{mode:"strict",typeSymbol:"localTaskTarget",create:()=>z.record(z.string(),z.json())}},"cuaAccess/selectTaskTarget": {service:"cuaAccess",description:"Operator-only bounded target selection; no grant or model tool.",invocation:{kind:"direct"},parameters:[{name:'sessionId',source:"json",wire:'sessionId',codec:{mode:"strict",typeSymbol:"string",create:()=>z.string().min(1).max(1024)},strictCodec:{mode:"strict",typeSymbol:"string",create:()=>z.string().min(1).max(1024)}},{name:'candidateId',source:"json",wire:'candidateId',codec:{mode:"strict",typeSymbol:"string",create:()=>z.string().min(1).max(1024)},strictCodec:{mode:"strict",typeSymbol:"string",create:()=>z.string().min(1).max(1024)}}],result:{mode:"strict",typeSymbol:"localTaskTarget",create:()=>z.record(z.string(),z.json())}},"cuaAccess/clearTaskTargets": {service:"cuaAccess",description:"Operator-only bounded target selection; no grant or model tool.",invocation:{kind:"direct"},parameters:[{name:'sessionId',source:"json",wire:'sessionId',codec:{mode:"strict",typeSymbol:"string",create:()=>z.string().min(1).max(1024)},strictCodec:{mode:"strict",typeSymbol:"string",create:()=>z.string().min(1).max(1024)}}],result:{mode:"strict",typeSymbol:"localTaskTarget",create:()=>z.void()}},
+@@ -316,0 +318,2 @@
++{"kind":"method","name":"discoverTaskApplications","signature":"@Remote discoverTaskApplications(sessionId:string,bundleId:string):Promise<{expiresAt:number;applications:Array<{id:string;pid:number;name:string;bundleId:string}>}>","summary":"Owner-only exact-bundle running instance metadata; no grant."},{"kind":"method","name":"selectTaskApplication","signature":"@Remote selectTaskApplication(sessionId:string,candidateId:string):Promise<{expiresAt:number;targets:Array<{id:string;application:string;pid:number;windowId:number;title:string;bounds:{x:number;y:number;width:number;height:number};isOnScreen:boolean}>}>","summary":"Choose one retained native process identity before window metadata; no grant."},
 +{"kind":"method","name":"discoverTaskTargets","signature":"@Remote discoverTaskTargets(sessionId:string,application:string):Promise<{expiresAt:number;targets:Array<{id:string;application:string;pid:number;windowId:number;title:string;bounds:{x:number;y:number;width:number;height:number};isOnScreen:boolean}>}>","summary":"Operator-only target selection; no authorization."},{"kind":"method","name":"selectTaskTarget","signature":"@Remote selectTaskTarget(sessionId:string,candidateId:string):Promise<{application:string;windowId:number;expiresAt:number}>","summary":"Operator-only target selection; no authorization."},{"kind":"method","name":"clearTaskTargets","signature":"@Remote clearTaskTargets(sessionId:string):Promise<void>","summary":"Operator-only target selection; no authorization."},
 --- a/lib/typert.remote-client.d.ts
 +++ b/lib/typert.remote-client.d.ts
-@@ -10,0 +11,4 @@
+@@ -10,0 +11,6 @@
++    discoverTaskApplications: (sessionId:string,bundleId:string) => Promise<RemoteResult<{expiresAt:number;applications:Array<{id:string;pid:number;name:string;bundleId:string}>}>>
++    selectTaskApplication: (sessionId:string,candidateId:string) => Promise<RemoteResult<{expiresAt:number;targets:Array<{id:string;application:string;pid:number;windowId:number;title:string;bounds:{x:number;y:number;width:number;height:number};isOnScreen:boolean}>}>>
 +    discoverTaskTargets: (sessionId:string,application:string) => Promise<RemoteResult<{expiresAt:number;targets:Array<{id:string;application:string;pid:number;windowId:number;title:string;bounds:{x:number;y:number;width:number;height:number};isOnScreen:boolean}>}>>
 +    selectTaskTarget: (sessionId:string,candidateId:string) => Promise<RemoteResult<{application:string;windowId:number;expiresAt:number}>>
 +    clearTaskTargets: (sessionId:string) => Promise<RemoteResult<void>>
 +
-@@ -21,0 +26,4 @@
+@@ -21,0 +28,6 @@
++    'cuaAccess/discoverTaskApplications': (sessionId:string,bundleId:string) => Promise<RemoteResult<{expiresAt:number;applications:Array<{id:string;pid:number;name:string;bundleId:string}>}>>
++    'cuaAccess/selectTaskApplication': (sessionId:string,candidateId:string) => Promise<RemoteResult<{expiresAt:number;targets:Array<{id:string;application:string;pid:number;windowId:number;title:string;bounds:{x:number;y:number;width:number;height:number};isOnScreen:boolean}>}>>
 +    'cuaAccess/discoverTaskTargets': (sessionId:string,application:string) => Promise<RemoteResult<{expiresAt:number;targets:Array<{id:string;application:string;pid:number;windowId:number;title:string;bounds:{x:number;y:number;width:number;height:number};isOnScreen:boolean}>}>>
 +    'cuaAccess/selectTaskTarget': (sessionId:string,candidateId:string) => Promise<RemoteResult<{application:string;windowId:number;expiresAt:number}>>
 +    'cuaAccess/clearTaskTargets': (sessionId:string) => Promise<RemoteResult<void>>
 +
-@@ -37,0 +46,4 @@
+@@ -37,0 +50,6 @@
++  readonly 'cuaAccess/discoverTaskApplications': TypertRemoteMethod<{sessionId:string;bundleId:string},{expiresAt:number;applications:Array<{id:string;pid:number;name:string;bundleId:string}>}>
++  readonly 'cuaAccess/selectTaskApplication': TypertRemoteMethod<{sessionId:string;candidateId:string},{expiresAt:number;targets:Array<{id:string;application:string;pid:number;windowId:number;title:string;bounds:{x:number;y:number;width:number;height:number};isOnScreen:boolean}>}>
 +  readonly 'cuaAccess/discoverTaskTargets': TypertRemoteMethod<{sessionId:string;application:string},{expiresAt:number;targets:Array<{id:string;application:string;pid:number;windowId:number;title:string;bounds:{x:number;y:number;width:number;height:number};isOnScreen:boolean}>}>
 +  readonly 'cuaAccess/selectTaskTarget': TypertRemoteMethod<{sessionId:string;candidateId:string},{application:string;windowId:number;expiresAt:number}>
 +  readonly 'cuaAccess/clearTaskTargets': TypertRemoteMethod<{sessionId:string},void>
@@ -397,11 +463,13 @@
 --- a/lib/typert.remote-client.js
 +++ b/lib/typert.remote-client.js
 @@ -94,0 +95 @@
-+"cuaAccess/discoverTaskTargets": {service:"cuaAccess",description:"Operator-only bounded target selection; no grant or model tool.",invocation:{kind:"direct"},parameters:[{name:'sessionId', source:"json", wire:'sessionId', codec:{mode:"strict",typeSymbol:"string",create:()=>z.string().min(1).max(1024)}, strictCodec:{mode:"strict",typeSymbol:"string",create:()=>z.string().min(1).max(1024)}},{name:'application', source:"json", wire:'application', codec:{mode:"strict",typeSymbol:"string",create:()=>z.string().min(1).max(1024)}, strictCodec:{mode:"strict",typeSymbol:"string",create:()=>z.string().min(1).max(1024)}}],result:{mode:"strict",typeSymbol:"localTaskTarget",create:()=>z.record(z.string(),z.json())}},"cuaAccess/selectTaskTarget": {service:"cuaAccess",description:"Operator-only bounded target selection; no grant or model tool.",invocation:{kind:"direct"},parameters:[{name:'sessionId', source:"json", wire:'sessionId', codec:{mode:"strict",typeSymbol:"string",create:()=>z.string().min(1).max(1024)}, strictCodec:{mode:"strict",typeSymbol:"string",create:()=>z.string().min(1).max(1024)}},{name:'candidateId', source:"json", wire:'candidateId', codec:{mode:"strict",typeSymbol:"string",create:()=>z.string().min(1).max(1024)}, strictCodec:{mode:"strict",typeSymbol:"string",create:()=>z.string().min(1).max(1024)}}],result:{mode:"strict",typeSymbol:"localTaskTarget",create:()=>z.record(z.string(),z.json())}},"cuaAccess/clearTaskTargets": {service:"cuaAccess",description:"Operator-only bounded target selection; no grant or model tool.",invocation:{kind:"direct"},parameters:[{name:'sessionId', source:"json", wire:'sessionId', codec:{mode:"strict",typeSymbol:"string",create:()=>z.string().min(1).max(1024)}, strictCodec:{mode:"strict",typeSymbol:"string",create:()=>z.string().min(1).max(1024)}}],result:{mode:"strict",typeSymbol:"localTaskTarget",create:()=>z.void()}},
++"cuaAccess/discoverTaskApplications": {service:"cuaAccess",description:"Operator-only bounded target selection; no grant or model tool.",invocation:{kind:"direct"},parameters:[{name:'sessionId',source:"json",wire:'sessionId',codec:{mode:"strict",typeSymbol:"string",create:()=>z.string().min(1).max(1024)},strictCodec:{mode:"strict",typeSymbol:"string",create:()=>z.string().min(1).max(1024)}},{name:'bundleId',source:"json",wire:'bundleId',codec:{mode:"strict",typeSymbol:"string",create:()=>z.string().min(1).max(1024)},strictCodec:{mode:"strict",typeSymbol:"string",create:()=>z.string().min(1).max(1024)}}],result:{mode:"strict",typeSymbol:"localTaskTarget",create:()=>z.object({expiresAt:z.number().int().positive(),applications:z.array(z.object({id:z.string(),pid:z.number().int().positive(),name:z.string().max(1024),bundleId:z.string().max(255)}).strict()).max(16)}).strict()}},"cuaAccess/selectTaskApplication": {service:"cuaAccess",description:"Operator-only bounded target selection; no grant or model tool.",invocation:{kind:"direct"},parameters:[{name:'sessionId',source:"json",wire:'sessionId',codec:{mode:"strict",typeSymbol:"string",create:()=>z.string().min(1).max(1024)},strictCodec:{mode:"strict",typeSymbol:"string",create:()=>z.string().min(1).max(1024)}},{name:'candidateId',source:"json",wire:'candidateId',codec:{mode:"strict",typeSymbol:"string",create:()=>z.string().min(1).max(1024)},strictCodec:{mode:"strict",typeSymbol:"string",create:()=>z.string().min(1).max(1024)}}],result:{mode:"strict",typeSymbol:"localTaskTarget",create:()=>z.record(z.string(),z.json())}},"cuaAccess/discoverTaskTargets": {service:"cuaAccess",description:"Operator-only bounded target selection; no grant or model tool.",invocation:{kind:"direct"},parameters:[{name:'sessionId',source:"json",wire:'sessionId',codec:{mode:"strict",typeSymbol:"string",create:()=>z.string().min(1).max(1024)},strictCodec:{mode:"strict",typeSymbol:"string",create:()=>z.string().min(1).max(1024)}},{name:'application',source:"json",wire:'application',codec:{mode:"strict",typeSymbol:"string",create:()=>z.string().min(1).max(1024)},strictCodec:{mode:"strict",typeSymbol:"string",create:()=>z.string().min(1).max(1024)}}],result:{mode:"strict",typeSymbol:"localTaskTarget",create:()=>z.record(z.string(),z.json())}},"cuaAccess/selectTaskTarget": {service:"cuaAccess",description:"Operator-only bounded target selection; no grant or model tool.",invocation:{kind:"direct"},parameters:[{name:'sessionId',source:"json",wire:'sessionId',codec:{mode:"strict",typeSymbol:"string",create:()=>z.string().min(1).max(1024)},strictCodec:{mode:"strict",typeSymbol:"string",create:()=>z.string().min(1).max(1024)}},{name:'candidateId',source:"json",wire:'candidateId',codec:{mode:"strict",typeSymbol:"string",create:()=>z.string().min(1).max(1024)},strictCodec:{mode:"strict",typeSymbol:"string",create:()=>z.string().min(1).max(1024)}}],result:{mode:"strict",typeSymbol:"localTaskTarget",create:()=>z.record(z.string(),z.json())}},"cuaAccess/clearTaskTargets": {service:"cuaAccess",description:"Operator-only bounded target selection; no grant or model tool.",invocation:{kind:"direct"},parameters:[{name:'sessionId',source:"json",wire:'sessionId',codec:{mode:"strict",typeSymbol:"string",create:()=>z.string().min(1).max(1024)},strictCodec:{mode:"strict",typeSymbol:"string",create:()=>z.string().min(1).max(1024)}}],result:{mode:"strict",typeSymbol:"localTaskTarget",create:()=>z.void()}},
 --- a/lib/types/access.d.ts
 +++ b/lib/types/access.d.ts
-@@ -33,0 +34,4 @@
+@@ -33,0 +34,6 @@
 +    /** Operator-only, exact running-application metadata; never grants input access. */
++    discoverTaskApplications(sessionId:string,bundleId:string): Promise<{expiresAt:number;applications:Array<{id:string;pid:number;name:string;bundleId:string}>}>;
++    selectTaskApplication(sessionId:string,candidateId:string): Promise<{expiresAt:number;targets:Array<{id:string;application:string;pid:number;windowId:number;title:string;bounds:{x:number;y:number;width:number;height:number};isOnScreen:boolean}>}>;
 +    discoverTaskTargets(sessionId: string, application: string): Promise<{expiresAt: number; targets: Array<{id: string; application: string; pid: number; windowId: number; title: string; bounds: {x:number;y:number;width:number;height:number};isOnScreen:boolean}>}>;
 +    selectTaskTarget(sessionId: string, candidateId: string): Promise<{application:string;windowId:number;expiresAt:number}>;
 +    clearTaskTargets(sessionId: string): Promise<void>;

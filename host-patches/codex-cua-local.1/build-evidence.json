@@ -55,5 +55,25 @@
       "pureWindowScopeFixture": "production policy fixture passed including reparenting during anchor metadata reads; no AX objects or native helper"
     },
     "desktopAndLiveHumanConsent": "not executed; no application/OS grant, model request, GUI observation/input, service change or parity claim"
+  },
+  "local4": {
+    "candidateVersion": "0.2.2-alpha.2.codex-cua-local.4",
+    "sourceManifestSha256": "4d72482481128253247c85a1cc381763109dfa80bb78c9e17a49d0b04579da80",
+    "wholePublishedPackagesVerified": 321,
+    "native": {
+      "sha256": "837341c98065282f3c4183f43df9d5cd74561ee43f015da50d9cc8156d5f2ccf",
+      "buildMode": "reuse only after all Swift sources, Package.swift and native protocol compared byte-identical to final local.3",
+      "newCandidateExecuted": false
+    },
+    "validation": {
+      "hostComposition": "67 passed on the actual coherent local.4 packages; real Gateway/registry and official provider, scripted native/model/human only",
+      "sourceCheck": "complete pnpm check passed:2389 tests passed,2skipped; lint/types/build and72-file package checks passed",
+      "route": "4 passed on actual local.4 packages",
+      "provenance": "2 corruption/closure tests passed;321 complete original packages verified",
+      "browser": "pending isolated matching-browser installation; first attempt executed zero tests because binary absent",
+      "installedProfile": "pending freshly packed isolated full-runtime regression",
+      "desktopAndModels": "not executed for this candidate; no acceptance/parity claim"
+    },
+    "status": "predeployment; exact-head independent review and complete CI/CodeQL readback required"
   }
 }

@@ -925,7 +925,7 @@ for(const ok of [false,true])test(`operator UI clear confirms success before unl
   const source=await readFile(new URL('lib/client.js',base),'utf8')
   const start=source.indexOf('function TaskTargetPanel('),end=source.indexOf('function PermissionPanel(',start)
   assert.ok(start>=0&&end>start)
-  const state=['root','Synthetic Browser',[],'Selected window 7',false,true]
+  const state=['root','Synthetic Browser',[],'Selected window 7',false,true,[]]
   let index=0
   const react={useState:()=>{const key=index++;return[state[key],value=>{state[key]=value}]}}
   const jsx=(type,props)=>({type,...props})
@@ -978,7 +978,7 @@ test('uncertain native target cleanup stays rejected across repeated clear and b
   const require=createRequire(import.meta.url),base=pathToFileURL(require.resolve('@deepseek-ai/dsh-cua/package.json'))
   const source=await readFile(new URL('lib/client.js',base),'utf8')
   const start=source.indexOf('function TaskTargetPanel('),end=source.indexOf('function PermissionPanel(',start)
-  const state=[f.parent.agent.id,target.application,[],'Selected window7',false,true];let index=0
+  const state=[f.parent.agent.id,target.application,[],'Selected window7',false,true,[]];let index=0
   const react={useState:()=>{const key=index++;return[state[key],value=>{state[key]=value}]}}
   const jsx=(type,props)=>({type,...props})
   const panel=new Function('react','react_jsx_runtime',source.slice(start,end)+';return TaskTargetPanel;')(react,{jsx,jsxs:jsx})
@@ -1019,4 +1019,200 @@ test('actual strict Gateway admits owner selection and rejects a policy-allowed 
  assert.equal(outcome.status,'completed',JSON.stringify(outcome))
  assert.equal(f.questions.length,1)
  assert.deepEqual((await f.ctx.cuaAccess.applications()).allowedApps,[])
+})
+
+// Real Gateway/registry + official provider, scripted native identities only.
+const instanceBundle = 'org.example.SyntheticBrowser'
+function instanceNative({ pids = [1234, 5678], extra = true } = {}) {
+  const generations = new Map(pids.map(pid => [pid, 1])), handles = new Map()
+  return { generations, async respond(request) {
+    if(request.method === 'listApps') return [...pids.map(pid=>({pid,name:'Synthetic Browser',bundleId:instanceBundle})),...(extra?[{pid:9999,name:'UNRELATED_CATALOG_SENTINEL',bundleId:'org.example.Other'}]:[])]
+    if(request.method === 'getApp') {
+      const pid = Number(request.params.selector), generation = generations.get(pid)
+      if(!generation) throw Error('APP_UNAVAILABLE')
+      const appHandle = `app-${pid}-${generation}`
+      handles.set(appHandle,{pid,generation})
+      return {appHandle,pid,name:'Synthetic Browser',bundleId:instanceBundle,authorization:{id:'a'.repeat(64),name:'Synthetic Browser',persistable:false}}
+    }
+    if(request.method === 'prepareTaskWindows') {
+      const identity=handles.get(request.params.appHandle)
+      if(!identity || generations.get(identity.pid)!==identity.generation) throw Error('STALE_APP process restarted')
+      const windowId=identity.pid===1234?7:9
+      return [{windowId,pid:identity.pid,appName:'Synthetic Browser',title:`Synthetic fixture ${identity.pid}`,bounds:{x:0,y:0,width:100,height:100},isOnScreen:true,targetKey:`native-${identity.pid}-${identity.generation}`}]
+    }
+    if(request.method === 'getState') return {...targetNative(request),appHandle:request.params.appHandle}
+    return {validated:true}
+  }}
+}
+async function instanceGateway(options={}) {
+  const native=options.native??instanceNative(options)
+  const f=await fixture({officialCua:true,strict:true,nativeResponse:native.respond,config:{application:'',windowId:0},script:selectedTaskScript().map(block=>{
+    const args=JSON.parse(block.arguments)
+    if(args.params?.appHandle)args.params.appHandle='app-1234-1'
+    return {...block,arguments:JSON.stringify(args)}
+  }),humanAnswer:options.humanAnswer??allowTask})
+  if(typeof f.ctx.get('cuaTaskTargets')?.discoverApplications!=='function')return {f,native,unavailable:true}
+  const require=createRequire(import.meta.url)
+  const {default:Registry}=await import(pathToFileURL(require.resolve('@deepseek-ai/dsh-typert-registry')))
+  const {default:Gateway}=await import(pathToFileURL(require.resolve('@deepseek-ai/dsh-api-gateway')))
+  const {TYPERT}=await import(pathToFileURL(require.resolve('@deepseek-ai/dsh-cua/typert')))
+  await f.ctx.plugin(Registry);f.ctx.typert.register(TYPERT)
+  f.ctx.provide('remoteAccess',{decide(){return {kind:'allow'}}})
+  await f.ctx.plugin(Gateway,Gateway.Config({}))
+  const rpc=(method,args={},kind='owner')=>f.ctx.typertGateway.invokeRpc('cuaAccess/'+method,{args:{sessionId:f.parent.agent.id,...args}},undefined,{id:kind,principal:{kind},signal:new AbortController().signal})
+  return {f,native,rpc}
+}
+const rpcValue = result => {assert.equal(result.ok,true,JSON.stringify(result));return result.value}
+
+for(const count of [0,1,2])test(`operator RPC lists only exact-bundle identity candidates (${count} instances)`,async t=>{
+ const {f,rpc,unavailable}=await instanceGateway({pids:[1234,5678].slice(0,count)})
+ if(unavailable){t.skip('requires local.4 instance selection');return}
+ const found=rpcValue(await rpc('discoverTaskApplications',{bundleId:instanceBundle}))
+ assert.equal(found.applications.length,count)
+ assert.doesNotMatch(JSON.stringify(found),/appHandle|authorization|UNRELATED_CATALOG_SENTINEL|org.example.Other/)
+ for(const candidate of found.applications){assert.equal(candidate.bundleId,instanceBundle);assert.ok([1234,5678].includes(candidate.pid));assert.equal(typeof candidate.id,'string')}
+ assert.deepEqual(f.nativeRequests.map(r=>r.method),['listApps',...Array(count).fill('getApp')])
+ assert.equal(f.seen.length,0);assert.equal(f.questions.length,0)
+ assert.deepEqual((await f.ctx.cuaAccess.applications()).allowedApps,[])
+ rpcValue(await rpc('clearTaskTargets'))
+ assert.equal(f.ctx.cuaTaskTargets.rows.size,0)
+})
+
+test('full first-use RPC chooses an instance/window before true-root task consent and keeps parent Flash',async t=>{
+ let f
+ const setup=await instanceGateway({humanAnswer:request=>{assert.equal(request.agent,f.parent.agent);assert.match(request.questions[0].detail,/Process: 1234/);assert.equal(f.nativeRequests.some(r=>['getState','click','setValue'].includes(r.method)),false);return allowTask()}})
+ if(setup.unavailable){t.skip('requires local.4');return}
+ f=setup.f;const {rpc}=setup
+ const apps=rpcValue(await rpc('discoverTaskApplications',{bundleId:instanceBundle})).applications
+ const windows=rpcValue(await rpc('selectTaskApplication',{candidateId:apps.find(app=>app.pid===1234).id})).targets
+ assert.equal(windows[0].pid,1234);assert.equal(windows[0].windowId,7)
+ rpcValue(await rpc('selectTaskTarget',{candidateId:windows[0].id}))
+ assert.equal(f.questions.length,0)
+ const result=(await f.execute()).results[0].result.value
+ assert.equal(result.status,'completed',JSON.stringify(result));assert.equal(result.cleanup,'drained')
+ assert.equal(f.questions.length,1)
+ assert.deepEqual(f.parent.agent.model.current(),{provider:'deepseek',model:'flash'})
+ assert.equal(f.ctx.cuaTaskTargets.rows.size,0)
+ assert.deepEqual((await f.ctx.cuaAccess.applications()).allowedApps,[])
+})
+
+test('instance RPC rejects non-owner, invalid bundle, child root and forged candidates before window reads',async t=>{
+ const {f,rpc,unavailable}=await instanceGateway()
+ if(unavailable){t.skip('requires local.4');return}
+ for(const method of ['discoverTaskApplications','selectTaskApplication']){
+  const args=method==='discoverTaskApplications'?{bundleId:instanceBundle}:{candidateId:'forged'}
+  assert.match(JSON.stringify(await rpc(method,args,'liveshare')),/CUA_TARGET_OPERATOR_REQUIRED/)
+ }
+ for(const bundleId of ['1234','Synthetic Browser','org.example.*',' org.example.SyntheticBrowser'])assert.equal((await rpc('discoverTaskApplications',{bundleId})).ok,false)
+ const child=await f.ctx.agents.create({sessionId:SessionId(crypto.randomUUID()),parentAgent:f.parent.agent,meta:{origin:'subagent',parentSession:f.parent.agent.id}});owned.push(()=>child.dispose())
+ assert.match(JSON.stringify(await rpc('discoverTaskApplications',{sessionId:child.agent.id,bundleId:instanceBundle})),/CUA_TARGET_OPERATOR_ROOT_REQUIRED/)
+ assert.equal(f.nativeRequests.length,0)
+ const apps=rpcValue(await rpc('discoverTaskApplications',{bundleId:instanceBundle})).applications
+ assert.match(JSON.stringify(await rpc('selectTaskApplication',{candidateId:'forged'})),/CUA_TARGET_NOT_FOUND/)
+ const other=await f.ctx.agents.create({sessionId:SessionId(crypto.randomUUID()),agentOptions:{provider:'deepseek',model:'flash'}});owned.push(()=>other.dispose())
+ assert.equal((await rpc('selectTaskApplication',{sessionId:other.agent.id,candidateId:apps[0].id})).ok,false)
+ assert.equal(f.nativeRequests.some(r=>r.method==='prepareTaskWindows'),false)
+ rpcValue(await rpc('clearTaskTargets'))
+})
+
+for(const changed of ['exited','restarted'])test(`retained instance identity rejects ${changed} PID before returning window metadata`,async t=>{
+ const {f,native,rpc,unavailable}=await instanceGateway({pids:[1234]})
+ if(unavailable){t.skip('requires local.4');return}
+ const app=rpcValue(await rpc('discoverTaskApplications',{bundleId:instanceBundle})).applications[0]
+ native.generations.set(1234,changed==='exited'?undefined:2)
+ assert.equal((await rpc('selectTaskApplication',{candidateId:app.id})).ok,false)
+ assert.deepEqual(f.nativeRequests.map(r=>r.method),['listApps','getApp','prepareTaskWindows'],'no fresh getApp-by-PID can silently rebind a new process')
+ assert.equal(f.ctx.cuaTaskTargets.rows.size,0)
+ assert.equal(f.questions.length,0);assert.equal(f.seen.length,0)
+})
+
+test('PID reuse during application catalog resolution must still match the exact bundle',async t=>{
+ const native=instanceNative({pids:[1234]});const original=native.respond
+ native.respond=async request=>{const result=await original(request);return request.method==='getApp'?{...result,bundleId:'org.example.Foreign'}:result}
+ const {f,rpc,unavailable}=await instanceGateway({native})
+ if(unavailable){t.skip('requires local.4');return}
+ assert.match(JSON.stringify(await rpc('discoverTaskApplications',{bundleId:instanceBundle})),/CUA_TARGET_RUNNING_APP_REQUIRED/)
+ assert.equal(f.nativeRequests.some(r=>r.method==='prepareTaskWindows'),false)
+ assert.equal(f.ctx.cuaTaskTargets.rows.size,0)
+})
+
+test('switching instance candidates invalidates previously shown windows and never selects automatically',async t=>{
+ const {f,rpc,unavailable}=await instanceGateway()
+ if(unavailable){t.skip('requires local.4');return}
+ const apps=rpcValue(await rpc('discoverTaskApplications',{bundleId:instanceBundle})).applications
+ const first=rpcValue(await rpc('selectTaskApplication',{candidateId:apps[0].id})).targets[0]
+ const second=rpcValue(await rpc('selectTaskApplication',{candidateId:apps[1].id})).targets[0]
+ assert.notEqual(first.pid,second.pid)
+ assert.match(JSON.stringify(await rpc('selectTaskTarget',{candidateId:first.id})),/CUA_TARGET_NOT_FOUND/)
+ assert.equal((await f.execute()).results[0].result.value.reason,'operator_target_required')
+ assert.equal(f.questions.length,0)
+ rpcValue(await rpc('selectTaskTarget',{candidateId:second.id}))
+ assert.match(JSON.stringify(await rpc('selectTaskApplication',{candidateId:apps[0].id})),/CUA_TARGET_ALREADY_SELECTED/)
+ rpcValue(await rpc('clearTaskTargets'))
+})
+
+test('concurrent clear aborts pending instance metadata and drains before any candidate can be reused',async t=>{
+ let entered,release
+ const waiting=new Promise(resolve=>{entered=resolve}),resume=new Promise(resolve=>{release=resolve})
+ const native=instanceNative();const respond=native.respond
+ native.respond=async request=>{if(request.method==='listApps'){entered();await resume}return respond(request)}
+ const {f,rpc,unavailable}=await instanceGateway({native})
+ if(unavailable){t.skip('requires local.4');return}
+ const pending=rpc('discoverTaskApplications',{bundleId:instanceBundle});await waiting
+ const clear=rpc('clearTaskTargets');release()
+ assert.equal((await pending).ok,false);rpcValue(await clear)
+ assert.equal(f.ctx.cuaTaskTargets.rows.size,0)
+ assert.equal(f.nativeRequests.some(r=>r.method==='getApp'),false)
+ assert.equal(f.questions.length,0);assert.equal(f.seen.length,0)
+})
+
+for(const pid of [0,-1,1.5])test(`invalid catalog PID ${pid} is rejected before a native identity lookup`,async t=>{
+ const native={respond:async request=>request.method==='listApps'?[{pid,name:'Synthetic Browser',bundleId:instanceBundle}]:targetNative(request)}
+ const {f,rpc,unavailable}=await instanceGateway({native})
+ if(unavailable){t.skip('requires local.4');return}
+ assert.equal((await rpc('discoverTaskApplications',{bundleId:instanceBundle})).ok,false)
+ assert.deepEqual(f.nativeRequests.map(r=>r.method),['listApps'])
+ assert.equal(f.ctx.cuaTaskTargets.rows.size,0)
+})
+
+test('instance candidates expire and clear without becoming a control capability or model operation',async t=>{
+ const {f,rpc,unavailable}=await instanceGateway({pids:[1234]})
+ if(unavailable){t.skip('requires local.4');return}
+ const app=rpcValue(await rpc('discoverTaskApplications',{bundleId:instanceBundle})).applications[0]
+ f.ctx.cuaTaskTargets.rows.get(f.parent.agent).expiresAt=Date.now()-1
+ assert.match(JSON.stringify(await rpc('selectTaskApplication',{candidateId:app.id})),/CUA_TARGET_CLOSED/)
+ rpcValue(await rpc('clearTaskTargets'))
+ const require=createRequire(import.meta.url),{Request}=await import(pathToFileURL(require.resolve('@deepseek-ai/dsh-cua/protocol')))
+ for(const method of ['discoverTaskApplications','selectTaskApplication']){
+  assert.equal(Request.safeParse({method,params:{}}).success,false)
+  assert.equal(f.ctx.tools.get(method,f.parent.agent),undefined)
+ }
+ assert.equal(f.questions.length,0)
+})
+
+test('packaged operator UI uses the current conversation and completes instance/window RPC selection without URL guessing',async t=>{
+ const {f,rpc,unavailable}=await instanceGateway({pids:[1234]})
+ if(unavailable){t.skip('requires local.4');return}
+ const require=createRequire(import.meta.url),base=pathToFileURL(require.resolve('@deepseek-ai/dsh-cua/package.json'))
+ const source=await readFile(new URL('lib/client.js',base),'utf8'),start=source.indexOf('function TaskTargetPanel('),end=source.indexOf('function PermissionPanel(',start)
+ assert.doesNotMatch(source.slice(start,end),/from its URL/)
+ const state=['',instanceBundle,[],'',false,false,[]];let index=0
+ const react={useState:initial=>{const key=index++;if(!(key in state))state[key]=initial;return[state[key],value=>{state[key]=value}]}}
+ const jsx=(type,props)=>({type,...props}),Panel=new Function('react','react_jsx_runtime',source.slice(start,end)+';return TaskTargetPanel;')(react,{jsx,jsxs:jsx})
+ const remote=Object.fromEntries(['discoverTaskApplications','selectTaskApplication','selectTaskTarget','clearTaskTargets'].map(method=>[method,(sessionId,value)=>rpc(method,{sessionId,...method==='discoverTaskApplications'?{bundleId:value}:method==='clearTaskTargets'?{}:{candidateId:value}})]))
+ const render=()=>{index=0;return Panel({remote,useSessions:selector=>selector({byId:{[f.parent.agent.id]:{id:f.parent.agent.id,retainedBy:{mainView:1}}}})})}
+ const find=(node,label)=>{if(!node||typeof node!=='object')return;if(node.type==='button'&&node.children===label)return node;for(const child of Array.isArray(node.children)?node.children:[node.children]){const found=find(child,label);if(found)return found}}
+ await find(render(),'Use current conversation').onClick()
+ assert.equal(state[0],f.parent.agent.id)
+ await find(render(),'Find application instances').onClick()
+ assert.equal(state[6].length,1)
+ assert.equal(state[5],false)
+ await find(render(),"Show this instance's windows").onClick()
+ assert.equal(state[2].length,1)
+ await find(render(),'Select this window').onClick()
+ assert.equal(state[5],true);assert.match(state[3],/approval is still required/)
+ assert.equal(f.questions.length,0)
+ assert.equal(f.nativeRequests.some(row=>['getState','screenshot','click','setValue'].includes(row.method)),false)
+ await find(render(),'Clear selection').onClick()
+ assert.equal(state[5],false);assert.equal(f.ctx.cuaTaskTargets.rows.size,0)
 })
